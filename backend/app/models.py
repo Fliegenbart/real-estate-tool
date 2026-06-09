@@ -1,0 +1,241 @@
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional
+
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+Money = Numeric(14, 2)
+Percent = Numeric(8, 3)
+Area = Numeric(10, 2)
+
+
+class Listing(Base):
+    __tablename__ = "listings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(80), default="manual")
+    external_id: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    street: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    house_number: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    federal_state: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6), nullable=True)
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6), nullable=True)
+    purchase_price: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    living_area_sqm: Mapped[Optional[Decimal]] = mapped_column(Area, nullable=True)
+    number_of_rooms: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    floor: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    construction_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    condition: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    energy_class: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    heating_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    energy_consumption_kwh: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    is_rented: Mapped[bool] = mapped_column(Boolean, default=False)
+    cold_rent_monthly: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    market_rent_estimate_monthly: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    house_money_monthly: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    non_recoverable_costs_monthly: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    maintenance_reserve_weg: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    broker_fee_percent: Mapped[Optional[Decimal]] = mapped_column(Percent, nullable=True)
+    property_transfer_tax_percent: Mapped[Optional[Decimal]] = mapped_column(Percent, nullable=True)
+    notary_and_land_registry_percent: Mapped[Optional[Decimal]] = mapped_column(Percent, nullable=True)
+    expected_initial_capex: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    listing_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(40), default="active")
+
+    deals: Mapped[list["Deal"]] = relationship(back_populates="listing")
+
+
+class Property(Base):
+    __tablename__ = "properties"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    street: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    house_number: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    federal_state: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6), nullable=True)
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    units: Mapped[list["Unit"]] = relationship(back_populates="property")
+    deals: Mapped[list["Deal"]] = relationship(back_populates="property")
+
+
+class Unit(Base):
+    __tablename__ = "units"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"))
+    living_area_sqm: Mapped[Optional[Decimal]] = mapped_column(Area, nullable=True)
+    number_of_rooms: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    floor: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    condition: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    energy_class: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    heating_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    property: Mapped[Property] = relationship(back_populates="units")
+
+
+class Deal(Base):
+    __tablename__ = "deals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    listing_id: Mapped[Optional[int]] = mapped_column(ForeignKey("listings.id"), nullable=True)
+    property_id: Mapped[Optional[int]] = mapped_column(ForeignKey("properties.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(240))
+    status: Mapped[str] = mapped_column(String(40), default="active")
+    pipeline_stage: Mapped[str] = mapped_column(String(80), default="New")
+    purchase_price: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    market_price_per_sqm: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    local_reference_rent_per_sqm: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    rent_control_area: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    listing: Mapped[Optional[Listing]] = relationship(back_populates="deals")
+    property: Mapped[Optional[Property]] = relationship(back_populates="deals")
+    underwriting_cases: Mapped[list["UnderwritingCase"]] = relationship(back_populates="deal")
+    financing_scenarios: Mapped[list["FinancingScenario"]] = relationship(back_populates="deal")
+    tax_scenarios: Mapped[list["TaxScenario"]] = relationship(back_populates="deal")
+    location_scores: Mapped[list["LocationScore"]] = relationship(back_populates="deal")
+    risk_flags: Mapped[list["RiskFlag"]] = relationship(back_populates="deal")
+    scores: Mapped[list["DealScore"]] = relationship(back_populates="deal")
+    documents: Mapped[list["Document"]] = relationship(back_populates="deal")
+    pipeline_items: Mapped[list["DealPipelineItem"]] = relationship(back_populates="deal")
+
+
+class UnderwritingCase(Base):
+    __tablename__ = "underwriting_cases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    name: Mapped[str] = mapped_column(String(120), default="Base case")
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped[Deal] = relationship(back_populates="underwriting_cases")
+
+
+class FinancingScenario(Base):
+    __tablename__ = "financing_scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    name: Mapped[str] = mapped_column(String(120), default="Base financing")
+    interest_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("4.0"))
+    amortization_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("2.0"))
+    loan_to_value_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("75.0"))
+    equity_contribution: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped[Deal] = relationship(back_populates="financing_scenarios")
+
+
+class TaxScenario(Base):
+    __tablename__ = "tax_scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    corporate_tax_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("15.0"))
+    solidarity_surcharge_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("5.5"))
+    trade_tax_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("0.0"))
+    assumes_extended_property_deduction: Mapped[bool] = mapped_column(Boolean, default=True)
+    depreciation_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("2.0"))
+    building_share_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("80.0"))
+    interest_deductible: Mapped[bool] = mapped_column(Boolean, default=True)
+    warning: Mapped[str] = mapped_column(
+        Text,
+        default="Tax calculation is simplified and must be reviewed by a Steuerberater.",
+    )
+
+    deal: Mapped[Deal] = relationship(back_populates="tax_scenarios")
+
+
+class LocationScore(Base):
+    __tablename__ = "location_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    population_trend_score: Mapped[int] = mapped_column(Integer, default=60)
+    vacancy_risk_score: Mapped[int] = mapped_column(Integer, default=60)
+    purchasing_power_score: Mapped[int] = mapped_column(Integer, default=60)
+    public_transport_score: Mapped[int] = mapped_column(Integer, default=60)
+    employer_access_score: Mapped[int] = mapped_column(Integer, default=60)
+    micro_location_score: Mapped[int] = mapped_column(Integer, default=60)
+    noise_risk_score: Mapped[int] = mapped_column(Integer, default=60)
+    flood_risk_score: Mapped[int] = mapped_column(Integer, default=60)
+    source: Mapped[str] = mapped_column(String(80), default="mock/manual")
+
+    deal: Mapped[Deal] = relationship(back_populates="location_scores")
+
+
+class RiskFlag(Base):
+    __tablename__ = "risk_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    code: Mapped[str] = mapped_column(String(120))
+    label: Mapped[str] = mapped_column(String(240))
+    severity: Mapped[str] = mapped_column(String(40), default="medium")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped[Deal] = relationship(back_populates="risk_flags")
+
+
+class DealScore(Base):
+    __tablename__ = "deal_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    total_score: Mapped[int] = mapped_column(Integer)
+    category_scores: Mapped[dict] = mapped_column(JSON, default=dict)
+    explanation: Mapped[str] = mapped_column(Text)
+    positive_factors: Mapped[list] = mapped_column(JSON, default=list)
+    negative_factors: Mapped[list] = mapped_column(JSON, default=list)
+    red_flags: Mapped[list] = mapped_column(JSON, default=list)
+    next_recommended_action: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped[Deal] = relationship(back_populates="scores")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    document_type: Mapped[str] = mapped_column(String(80))
+    file_name: Mapped[str] = mapped_column(String(240))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    review_status: Mapped[str] = mapped_column(String(80), default="not_reviewed")
+    risk_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    deal: Mapped[Deal] = relationship(back_populates="documents")
+
+
+class DealPipelineItem(Base):
+    __tablename__ = "deal_pipeline_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    stage: Mapped[str] = mapped_column(String(80), default="New")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped[Deal] = relationship(back_populates="pipeline_items")

@@ -1,0 +1,22 @@
+[project]
+name = "german-real-estate-underwriting-backend"
+version = "0.1.0"
+description = "FastAPI backend for German residential acquisition and underwriting MVP"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic==1.17.2",
+  "fastapi==0.115.6",
+  "httpx==0.28.1",
+  "psycopg[binary]==3.2.13",
+  "pydantic==2.12.5",
+  "SQLAlchemy==2.0.46",
+  "uvicorn[standard]==0.32.1"
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.0.1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

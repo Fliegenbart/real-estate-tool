@@ -1,0 +1,13 @@
+.DS_Store
+node_modules/
+.next/
+dist/
+coverage/
+__pycache__/
+.pytest_cache/
+.playwright-mcp/
+.venv/
+*.pyc
+*.db
+*.sqlite
+.env
