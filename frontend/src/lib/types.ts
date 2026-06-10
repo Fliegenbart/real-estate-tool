@@ -89,6 +89,10 @@ export type Underwriting = {
     remaining: number;
   }>;
   remaining_loan_after_holding?: number | null;
+  remaining_loan_at_fixation_end?: number | null;
+  residual_debt_factor?: number | null;
+  residual_debt_factor_rating?: "green" | "amber" | "red" | null;
+  amortization_gap_to_target_factor?: number | null;
   stressed_interest_rate_percent?: number | null;
   stressed_annual_debt_service?: number | null;
   stressed_monthly_cashflow_before_tax?: number | null;

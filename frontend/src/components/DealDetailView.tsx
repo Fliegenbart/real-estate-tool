@@ -133,15 +133,31 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
         <div className="panel wide">
           <div className="panel-header">
-            <h2>Zinsbindungs-Stresstest</h2>
-            <span>{uw?.stressed_interest_rate_percent ? `Anschlusszins ${formatPercent(uw.stressed_interest_rate_percent)}` : "Nicht gerechnet"}</span>
+            <h2>Zinsbindungs-Stresstest & Restschuld-Faktor</h2>
+            <div className="button-row">
+              {uw?.residual_debt_factor_rating && (
+                <span className={`score ${ratingTone(uw.residual_debt_factor_rating)}`}>
+                  Faktor {formatNumber(uw.residual_debt_factor)}
+                </span>
+              )}
+              <span>{uw?.stressed_interest_rate_percent ? `Anschlusszins ${formatPercent(uw.stressed_interest_rate_percent)}` : "Nicht gerechnet"}</span>
+            </div>
           </div>
           <div className="kpi-strip">
+            <Fact label="Restschuld Ende Zinsbindung" value={formatCurrency(uw?.remaining_loan_at_fixation_end)} />
+            <Fact label="Restschuld-Faktor (Ziel ≤ 150 KM)" value={formatNumber(uw?.residual_debt_factor, " KM")} />
+            <Fact label="Lücke bis Faktor 150" value={formatCurrency(uw?.amortization_gap_to_target_factor)} />
             <Fact label="Restschuld Ende Haltedauer" value={formatCurrency(uw?.remaining_loan_after_holding)} />
             <Fact label="Kapitaldienst gestresst" value={formatCurrency(uw?.stressed_annual_debt_service)} />
             <Fact label="Cashflow gestresst" value={formatCurrency(uw?.stressed_monthly_cashflow_before_tax)} />
             <Fact label="DSCR gestresst" value={formatNumber(uw?.stressed_dscr)} />
           </div>
+          {uw?.residual_debt_factor_rating && uw.residual_debt_factor_rating !== "green" && (
+            <p className="tax-warning">
+              Restschuld bei Zinsbindungsende über 150 Kaltmieten: Es fehlen {formatCurrency(uw.amortization_gap_to_target_factor)} Tilgung/Eigenkapital,
+              damit sich das Objekt bei 5% Anschlusszins selbst trägt (Faustregel: 8% Jahresmiete auf Restschuld = 5% Zins + 1% Tilgung + 1% Steuer + 1% Rücklage).
+            </p>
+          )}
         </div>
 
         <div className="panel">
@@ -229,6 +245,12 @@ export function DealDetailView({ dealId }: { dealId: string }) {
       </section>
     </div>
   );
+}
+
+function ratingTone(rating: "green" | "amber" | "red"): "good" | "watch" | "risk" {
+  if (rating === "green") return "good";
+  if (rating === "amber") return "watch";
+  return "risk";
 }
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {

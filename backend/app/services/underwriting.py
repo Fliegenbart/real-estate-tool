@@ -9,6 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 CENT = Decimal("0.01")
 PERCENT = Decimal("0.01")
 
+# Residual-debt rule of thumb: at the end of the fixed-interest period the
+# remaining loan should not exceed 150 monthly cold rents (annual rent = 8% of
+# debt -> carries ~5% refi interest + 1% amortization + tax + reserve).
+RESIDUAL_DEBT_TARGET_FACTOR = Decimal("150")
+RESIDUAL_DEBT_AMBER_FACTOR = Decimal("170")
+
 
 def money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
@@ -103,6 +109,10 @@ class UnderwritingResult(BaseModel):
     annual_tax_approx: Decimal
     amortization_schedule: list[dict]
     remaining_loan_after_holding: Decimal
+    remaining_loan_at_fixation_end: Decimal
+    residual_debt_factor: Optional[Decimal]
+    residual_debt_factor_rating: Optional[str]
+    amortization_gap_to_target_factor: Optional[Decimal]
     stressed_interest_rate_percent: Optional[Decimal]
     stressed_annual_debt_service: Optional[Decimal]
     stressed_monthly_cashflow_before_tax: Optional[Decimal]
@@ -207,20 +217,37 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
 
     # Refinancing stress: remaining loan at the end of the fixed-interest
     # period is refinanced at the stressed rate with unchanged amortization.
+    fixation_rows = schedule[: data.interest_fixation_years]
+    remaining_at_refi = fixation_rows[-1]["remaining"] if fixation_rows else loan_amount
+
     stressed_rate: Optional[Decimal] = None
     stressed_debt_service: Optional[Decimal] = None
     stressed_cashflow_monthly: Optional[Decimal] = None
     stressed_dscr: Optional[Decimal] = None
-    if loan_amount > 0 and data.interest_fixation_years > 0:
-        fixation_rows = schedule[: data.interest_fixation_years]
-        remaining_at_refi = fixation_rows[-1]["remaining"] if fixation_rows else loan_amount
-        if remaining_at_refi > 0:
-            stressed_rate = data.financing_interest_rate_percent + data.refi_stress_interest_delta_percent
-            stressed_debt_service = remaining_at_refi * (
-                stressed_rate + data.amortization_rate_percent
-            ) / Decimal("100")
-            stressed_cashflow_monthly = (net_operating_income - stressed_debt_service) / Decimal("12")
-            stressed_dscr = safe_div(net_operating_income, stressed_debt_service)
+    if remaining_at_refi > 0 and data.interest_fixation_years > 0:
+        stressed_rate = data.financing_interest_rate_percent + data.refi_stress_interest_delta_percent
+        stressed_debt_service = remaining_at_refi * (
+            stressed_rate + data.amortization_rate_percent
+        ) / Decimal("100")
+        stressed_cashflow_monthly = (net_operating_income - stressed_debt_service) / Decimal("12")
+        stressed_dscr = safe_div(net_operating_income, stressed_debt_service)
+
+    # Residual-debt factor: remaining loan at fixation end in monthly cold rents.
+    residual_debt_factor: Optional[Decimal] = None
+    residual_debt_rating: Optional[str] = None
+    amortization_gap: Optional[Decimal] = None
+    if data.monthly_cold_rent > 0:
+        residual_debt_factor = remaining_at_refi / data.monthly_cold_rent
+        if residual_debt_factor <= RESIDUAL_DEBT_TARGET_FACTOR:
+            residual_debt_rating = "green"
+        elif residual_debt_factor <= RESIDUAL_DEBT_AMBER_FACTOR:
+            residual_debt_rating = "amber"
+        else:
+            residual_debt_rating = "red"
+        amortization_gap = max(
+            remaining_at_refi - RESIDUAL_DEBT_TARGET_FACTOR * data.monthly_cold_rent,
+            Decimal("0"),
+        )
 
     return UnderwritingResult(
         price_per_sqm=money(price_per_sqm),
@@ -255,6 +282,10 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
             for row in holding_rows
         ],
         remaining_loan_after_holding=money(remaining_loan),
+        remaining_loan_at_fixation_end=money(remaining_at_refi),
+        residual_debt_factor=percent(residual_debt_factor) if residual_debt_factor is not None else None,
+        residual_debt_factor_rating=residual_debt_rating,
+        amortization_gap_to_target_factor=money(amortization_gap) if amortization_gap is not None else None,
         stressed_interest_rate_percent=percent(stressed_rate) if stressed_rate is not None else None,
         stressed_annual_debt_service=money(stressed_debt_service) if stressed_debt_service is not None else None,
         stressed_monthly_cashflow_before_tax=money(stressed_cashflow_monthly)
@@ -268,6 +299,7 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
             "dscr": "net_operating_income / annual_debt_service",
             "maximum_purchase_price_for_target_yield": "target NOI price adjusted down for capex and acquisition cost percentages",
             "tax": "simplified GmbH tax on positive taxable income after interest and AfA assumptions",
+            "residual_debt_factor": "remaining loan at end of interest fixation / monthly cold rent (target <= 150, amber <= 170)",
         },
         tax_warning="Tax calculation is simplified and must be reviewed by a Steuerberater.",
     )

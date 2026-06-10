@@ -91,6 +91,11 @@ def build_investment_memo(deal_payload: dict) -> dict:
                     f"Refi stress rate: {underwriting.get('stressed_interest_rate_percent')}%",
                     f"Stressed monthly cashflow: {underwriting.get('stressed_monthly_cashflow_before_tax')}",
                     f"Stressed DSCR: {underwriting.get('stressed_dscr')}",
+                    (
+                        f"Residual debt factor at fixation end: {underwriting.get('residual_debt_factor')} monthly rents "
+                        f"({underwriting.get('residual_debt_factor_rating')}; target <= 150). "
+                        f"Gap to target: {underwriting.get('amortization_gap_to_target_factor')}"
+                    ),
                 ],
             },
             {
