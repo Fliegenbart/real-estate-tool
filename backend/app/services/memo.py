@@ -93,7 +93,24 @@ def build_investment_memo(deal_payload: dict) -> dict:
                     f"Stressed DSCR: {underwriting.get('stressed_dscr')}",
                 ],
             },
+            {
+                "title": "Opportunity signals",
+                "items": [
+                    f"[{signal.get('severity')}] {signal.get('type')}: {signal.get('explanation')}"
+                    for signal in (deal_payload.get("signals") or [])
+                ]
+                or ["No signals derived - listing history may be too fresh."],
+            },
             {"title": "Red flags", "items": red_flags or ["No hard red flags from current model."]},
+            {
+                "title": "Risks & mitigations",
+                "items": [
+                    f"[{item.get('severity')}] {item.get('title')}: {item.get('explanation')} "
+                    f"Mitigation: {'; '.join(item.get('mitigations') or ['-'])}"
+                    for item in ((deal_payload.get("risk_matrix") or {}).get("items") or [])
+                ]
+                or ["Risk matrix not computed - run scoring first."],
+            },
             {"title": "Recommendation", "items": [recommendation]},
             {
                 "title": "Open due diligence questions",

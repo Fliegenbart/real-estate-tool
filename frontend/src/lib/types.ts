@@ -57,6 +57,7 @@ export type Listing = {
   price_events?: Array<{ id: number; price: number; recorded_at: string; source: string }>;
   price_reduction_count?: number;
   price_reduction_total_percent?: number | null;
+  signals?: Signal[];
 };
 
 export type Underwriting = {
@@ -192,6 +193,62 @@ export type GiftPropertyComparison = {
   disclaimer: string;
 };
 
+export type Signal = {
+  type: string;
+  severity: string;
+  explanation: string;
+};
+
+export type RiskMatrixItem = {
+  code: string;
+  title: string;
+  severity: string;
+  explanation: string;
+  due_diligence_actions: string[];
+  mitigations: string[];
+  price_consequence: string | null;
+};
+
+export type RiskMatrix = {
+  items: RiskMatrixItem[];
+  high_count: number;
+  medium_count: number;
+  summary: string;
+};
+
+export type GeoContext = {
+  id?: number;
+  parcel_id?: string | null;
+  ground_value_eur_per_sqm?: number | string | null;
+  ground_value_source_id?: number | null;
+  ground_value_data_date?: string | null;
+  zoning_summary?: string | null;
+  b_plan_available?: boolean | null;
+  f_plan_summary?: string | null;
+  milieu_protection_area?: boolean | null;
+  redevelopment_area?: boolean | null;
+  monument_protection?: boolean | null;
+  notes?: string | null;
+  data_confidence_percent?: number;
+};
+
+export type DataSource = {
+  id: number;
+  name: string;
+  provider?: string | null;
+  data_type: string;
+  license_type?: string | null;
+  commercial_use_allowed?: boolean | null;
+  attribution_required?: boolean | null;
+  geographic_coverage?: string | null;
+  url?: string | null;
+  last_import_at?: string | null;
+  source_data_date?: string | null;
+  update_frequency?: string | null;
+  reliability_score: number;
+  notes?: string | null;
+};
+
 export type TaxBriefing = {
   deal_id: number;
   title: string;
@@ -221,6 +278,8 @@ export type Deal = {
   latest_score?: DealScore | null;
   weg_health?: { inputs: WegHealthInput; results: WegHealthResult; updated_at: string } | null;
   capital_stacks?: Array<{ id: number; name: string; results: CapitalStackResult }>;
+  geo_context?: GeoContext | null;
+  signals?: Signal[];
   financing?: Record<string, number | string | boolean | null> | null;
   tax?: Record<string, number | string | boolean | null> | null;
   rent_law?: Record<string, number | string | boolean | string[] | null> | null;

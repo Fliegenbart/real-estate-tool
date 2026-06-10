@@ -12,6 +12,10 @@ Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsa
 - **Sourcing**: E-Mail-Import fuer Suchagenten-Mails (Listings-Seite), Upsert per external_id, Preisverlauf je Listing, Tage-am-Markt und Preisreduktionen als Verhandlungshebel.
 - **Underwriting-Haertung**: echter Annuitaeten-Tilgungsplan, korrekte Restschuld, jahresgenaue After-Tax-IRR, Zinsbindungs-Stresstest (Anschlusszins +2% Default).
 - **Deutschland-Daten**: Grunderwerbsteuer je Bundesland (automatisch aus `federal_state`), Mietpreisbremse-Lookup je Stadt/Bundesland statt Pauschalannahme.
+- **Opportunity-Signale** (Assetfy-inspiriert): LONG_TIME_ON_MARKET, PRICE_REDUCTION, BELOW_MARKET_PRICE, RENT_BELOW_MARKET, ENERGY_RISK, HIGH_HOUSE_MONEY, MISSING_WEG_DOCUMENTS, POSSIBLE_DISTRESSED_SALE (Keyword-Analyse im Inseratstext) - als Chips in den Listings und als Panel im Deal.
+- **Chancen/Risiken/Mitigation-Matrix** (`/api/deals/{id}/risk-matrix` + Deal-Panel): Jede Red Flag bekommt Erklaerung, Due-Diligence-Aktionen, Mitigation und Preisfolge. Fliesst auch ins Memo ein.
+- **Datenquellen-Register** (`/datenquellen`): Quelle, Lizenz, Attribution, Abdeckung, Datenstand, letzter Import, Verlaesslichkeit - mit Seed fuer BORIS-D, Mietspiegel, Suchagenten, ZVG, Zensus.
+- **Geo-Kontext je Deal**: Bodenrichtwert (mit Quellen-Referenz und Stichtag), Flurstueck, B-Plan, Milieuschutz, Sanierungsgebiet, Denkmalschutz - manuell erfasst, mit Datenlage-Confidence.
 
 ## Was gebaut ist
 

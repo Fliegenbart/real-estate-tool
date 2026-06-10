@@ -705,6 +705,34 @@ td {
   font-weight: 700;
 }
 
+.signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.signal-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #eef1f0;
+  color: var(--muted);
+}
+
+.signal-chip.high {
+  background: #fff0ed;
+  color: var(--risk);
+}
+
+.signal-chip.medium {
+  background: #fff6df;
+  color: var(--watch);
+}
+
 .motive-select select,
 .stack-name {
   min-height: 36px;

@@ -1,12 +1,15 @@
 import {
   CapitalStackResult,
   Dashboard,
+  DataSource,
   Deal,
+  GeoContext,
   GiftPropertyComparison,
   InvestmentMemo,
   Listing,
   NegotiationDossier,
   PipelineStage,
+  RiskMatrix,
   TaxBriefing,
   WegHealthInput,
   WegHealthResult
@@ -157,5 +160,31 @@ export async function importEmailListings(content: string): Promise<{ imported: 
   return request<{ imported: number; updated: number }>(`/listings/import/email`, {
     method: "POST",
     body: JSON.stringify({ content })
+  });
+}
+
+export async function getRiskMatrix(id: string | number): Promise<RiskMatrix> {
+  return request<RiskMatrix>(`/deals/${id}/risk-matrix`);
+}
+
+export async function updateGeoContext(id: string | number, payload: GeoContext): Promise<GeoContext> {
+  return request<GeoContext>(`/deals/${id}/geo-context`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getDataSources(): Promise<DataSource[]> {
+  return request<DataSource[]>(`/data-sources`);
+}
+
+export async function seedDefaultDataSources(): Promise<{ created: number }> {
+  return request<{ created: number }>(`/data-sources/seed-defaults`, { method: "POST" });
+}
+
+export async function updateDataSource(id: number, payload: Partial<DataSource>): Promise<DataSource> {
+  return request<DataSource>(`/data-sources/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
   });
 }

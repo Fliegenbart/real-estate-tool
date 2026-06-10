@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db, init_db
 from app.models import (
     CapitalStackScenario,
+    DataSource,
     Deal,
     DealPipelineItem,
     DealScore,
     Document,
     FinancingScenario,
+    GeoContext,
     Listing,
     ListingPriceEvent,
     LocationScore,
@@ -27,7 +29,10 @@ from app.models import (
     Unit,
     WegHealthRecord,
 )
+from app.services.data_sources import DEFAULT_DATA_SOURCES
 from app.services.email_ingest import parse_alert_email
+from app.services.risk_engine import build_risk_matrix
+from app.services.signals import derive_signals
 from app.services.financing import (
     CapitalStackInput,
     GiftPropertyInput,
@@ -208,6 +213,37 @@ class CapitalStackRequest(BaseModel):
     name: str = "Stack A"
     tranches: list[dict[str, Any]]
     lender_effective_tax_rate_percent: Decimal = Decimal("30.0")
+
+
+class DataSourcePayload(BaseModel):
+    name: str
+    provider: Optional[str] = None
+    data_type: str = "other"
+    license_type: Optional[str] = None
+    commercial_use_allowed: Optional[bool] = None
+    attribution_required: Optional[bool] = None
+    geographic_coverage: Optional[str] = None
+    url: Optional[str] = None
+    source_data_date: Optional[str] = None
+    update_frequency: Optional[str] = None
+    reliability_score: int = 50
+    notes: Optional[str] = None
+
+
+class GeoContextUpdate(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    parcel_id: Optional[str] = None
+    ground_value_eur_per_sqm: Optional[Decimal] = None
+    ground_value_source_id: Optional[int] = None
+    ground_value_data_date: Optional[str] = None
+    zoning_summary: Optional[str] = None
+    b_plan_available: Optional[bool] = None
+    f_plan_summary: Optional[str] = None
+    milieu_protection_area: Optional[bool] = None
+    redevelopment_area: Optional[bool] = None
+    monument_protection: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 @app.get("/api/health")
@@ -645,10 +681,93 @@ def gift_property_strategies(payload: GiftPropertyInput) -> dict[str, Any]:
     return json_safe(compare_gift_property_strategies(payload).model_dump())
 
 
+@app.get("/api/deals/{deal_id}/risk-matrix")
+def risk_matrix(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    payload = deal_detail_payload(db, deal)
+    score = payload.get("latest_score") or {}
+    signal_types = [signal["type"] for signal in payload.get("signals") or []]
+    matrix = build_risk_matrix(score.get("red_flags") or [], signal_types)
+    return json_safe(matrix.model_dump())
+
+
+@app.patch("/api/deals/{deal_id}/geo-context")
+def update_geo_context(deal_id: int, payload: GeoContextUpdate, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    if payload.ground_value_source_id is not None and db.get(DataSource, payload.ground_value_source_id) is None:
+        raise HTTPException(status_code=400, detail="ground_value_source_id does not reference a data source.")
+    context = latest(deal.geo_contexts)
+    if context is None:
+        context = GeoContext(deal_id=deal.id)
+        db.add(context)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(context, key, value)
+    context.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(context)
+    return geo_context_payload(context)
+
+
+@app.get("/api/data-sources")
+def list_data_sources(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    sources = db.query(DataSource).order_by(DataSource.data_type, DataSource.name).all()
+    return [model_to_dict(source) for source in sources]
+
+
+@app.post("/api/data-sources", status_code=status.HTTP_201_CREATED)
+def create_data_source(payload: DataSourcePayload, db: Session = Depends(get_db)) -> dict[str, Any]:
+    source = DataSource(**payload.model_dump())
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return model_to_dict(source)
+
+
+@app.post("/api/data-sources/seed-defaults", status_code=status.HTTP_201_CREATED)
+def seed_default_data_sources(db: Session = Depends(get_db)) -> dict[str, Any]:
+    existing_names = {name for (name,) in db.query(DataSource.name).all()}
+    created = 0
+    for row in DEFAULT_DATA_SOURCES:
+        if row["name"] in existing_names:
+            continue
+        db.add(DataSource(**row))
+        created += 1
+    db.commit()
+    return {"created": created, "skipped": len(DEFAULT_DATA_SOURCES) - created}
+
+
+@app.patch("/api/data-sources/{source_id}")
+def update_data_source(source_id: int, payload: dict[str, Any], db: Session = Depends(get_db)) -> dict[str, Any]:
+    source = db.get(DataSource, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Data source not found.")
+    for key, value in payload.items():
+        if key != "id" and hasattr(source, key):
+            setattr(source, key, value)
+    db.commit()
+    db.refresh(source)
+    return model_to_dict(source)
+
+
+@app.delete("/api/data-sources/{source_id}")
+def delete_data_source(source_id: int, db: Session = Depends(get_db)) -> dict[str, int]:
+    source = db.get(DataSource, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Data source not found.")
+    db.delete(source)
+    db.commit()
+    return {"deleted": source_id}
+
+
 @app.get("/api/deals/{deal_id}/investment-memo")
 def investment_memo(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     deal = require_deal(db, deal_id)
     payload = deal_detail_payload(db, deal)
+    score = payload.get("latest_score") or {}
+    signal_types = [signal["type"] for signal in payload.get("signals") or []]
+    payload["risk_matrix"] = json_safe(
+        build_risk_matrix(score.get("red_flags") or [], signal_types).model_dump()
+    )
     return build_investment_memo(payload)
 
 
@@ -771,6 +890,7 @@ def clear_database(db: Session) -> None:
         DealPipelineItem,
         WegHealthRecord,
         CapitalStackScenario,
+        GeoContext,
         ListingPriceEvent,
         Unit,
         Deal,
@@ -804,6 +924,7 @@ def listing_to_dict(listing: Listing) -> dict[str, Any]:
         )
     else:
         data["price_reduction_total_percent"] = None
+    data["signals"] = [signal.model_dump() for signal in derive_signals(data)]
     return data
 
 
@@ -832,6 +953,14 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
             {"id": item.id, "name": item.name, "results": item.results}
             for item in sorted(deal.capital_stacks, key=lambda s: s.id, reverse=True)
         ],
+        "geo_context": geo_context_payload(latest(deal.geo_contexts)),
+        "signals": [
+            signal.model_dump()
+            for signal in derive_signals(
+                listing_to_dict(deal.listing) if deal.listing else {},
+                {"market_price_per_sqm": deal.market_price_per_sqm},
+            )
+        ],
     }
 
 
@@ -840,6 +969,23 @@ def weg_health_payload(deal: Deal) -> Optional[dict[str, Any]]:
     if record is None:
         return None
     return {"inputs": record.inputs, "results": record.results, "updated_at": json_safe(record.updated_at)}
+
+
+def geo_context_payload(context: Optional[GeoContext]) -> Optional[dict[str, Any]]:
+    if context is None:
+        return None
+    data = model_to_dict(context)
+    core_fields = [
+        "ground_value_eur_per_sqm",
+        "zoning_summary",
+        "b_plan_available",
+        "milieu_protection_area",
+        "redevelopment_area",
+        "monument_protection",
+    ]
+    filled = sum(1 for field in core_fields if data.get(field) is not None)
+    data["data_confidence_percent"] = int(round(filled / len(core_fields) * 100))
+    return data
 
 
 def build_underwriting_input(deal: Deal) -> UnderwritingInput:

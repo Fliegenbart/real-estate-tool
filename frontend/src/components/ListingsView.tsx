@@ -154,6 +154,15 @@ export function ListingsView() {
                     <div className="cell-title">
                       <strong>{listing.title}</strong>
                       <span>{listing.source || "manual"} {hasMissingCoreData(listing) ? "· Datenluecke" : ""}</span>
+                      {(listing.signals || []).length > 0 && (
+                        <span className="signal-row">
+                          {(listing.signals || []).slice(0, 3).map((signal) => (
+                            <span className={`signal-chip ${signal.severity}`} key={signal.type} title={signal.explanation}>
+                              {signal.type.replaceAll("_", " ").toLowerCase()}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>{listing.city || "Fehlt"}</td>

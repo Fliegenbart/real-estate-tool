@@ -133,6 +133,47 @@ class Deal(Base):
     pipeline_items: Mapped[list["DealPipelineItem"]] = relationship(back_populates="deal")
     weg_health_records: Mapped[list["WegHealthRecord"]] = relationship(back_populates="deal")
     capital_stacks: Mapped[list["CapitalStackScenario"]] = relationship(back_populates="deal")
+    geo_contexts: Mapped[list["GeoContext"]] = relationship(back_populates="deal")
+
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    provider: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    data_type: Mapped[str] = mapped_column(String(80), default="other")
+    license_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    commercial_use_allowed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    attribution_required: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    geographic_coverage: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    last_import_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source_data_date: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    update_frequency: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    reliability_score: Mapped[int] = mapped_column(Integer, default=50)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class GeoContext(Base):
+    __tablename__ = "geo_contexts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    parcel_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    ground_value_eur_per_sqm: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
+    ground_value_source_id: Mapped[Optional[int]] = mapped_column(ForeignKey("data_sources.id"), nullable=True)
+    ground_value_data_date: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    zoning_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    b_plan_available: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    f_plan_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    milieu_protection_area: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    redevelopment_area: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    monument_protection: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped["Deal"] = relationship(back_populates="geo_contexts")
 
 
 class WegHealthRecord(Base):

@@ -2,6 +2,7 @@
 
 import {
   Building2,
+  Database,
   FileText,
   Gift,
   KanbanSquare,
@@ -16,7 +17,8 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/listings", label: "Listings", icon: ListFilter },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
-  { href: "/finanzierung", label: "Chemnitz-Hebel", icon: Gift }
+  { href: "/finanzierung", label: "Chemnitz-Hebel", icon: Gift },
+  { href: "/datenquellen", label: "Datenquellen", icon: Database }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

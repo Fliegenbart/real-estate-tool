@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { getDeal, runScore, runUnderwriting } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
 import { Deal } from "../lib/types";
+import { GeoContextPanel } from "./GeoContextPanel";
+import { RiskMatrixPanel } from "./RiskMatrixPanel";
 import { WegHealthPanel } from "./WegHealthPanel";
 
 export function DealDetailView({ dealId }: { dealId: string }) {
@@ -156,6 +158,23 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
         <div className="panel">
           <div className="panel-header">
+            <h2>Signale</h2>
+            <span className="tag">{(deal.signals || []).length}</span>
+          </div>
+          <ul className="plain-list">
+            {(deal.signals || []).map((signal) => (
+              <li key={signal.type}>
+                <strong>{signal.type.replaceAll("_", " ")}</strong>: {signal.explanation}
+              </li>
+            ))}
+            {(deal.signals || []).length === 0 && <li>Keine Signale - Listing-Historie ist noch frisch.</li>}
+          </ul>
+        </div>
+
+        <GeoContextPanel deal={deal} onSaved={() => void load()} />
+
+        <div className="panel">
+          <div className="panel-header">
             <h2>Lage</h2>
             <MapPin size={17} />
           </div>
@@ -205,6 +224,8 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         </div>
 
         <WegHealthPanel deal={deal} onSaved={() => void load()} />
+
+        <RiskMatrixPanel dealId={deal.id} scoreVersion={String(scoreResult?.total_score ?? "none")} />
       </section>
     </div>
   );
