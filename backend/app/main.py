@@ -11,26 +11,40 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db
 from app.models import (
+    CapitalStackScenario,
     Deal,
     DealPipelineItem,
     DealScore,
     Document,
     FinancingScenario,
     Listing,
+    ListingPriceEvent,
     LocationScore,
     Property,
     RiskFlag,
     TaxScenario,
     UnderwritingCase,
     Unit,
+    WegHealthRecord,
 )
+from app.services.email_ingest import parse_alert_email
+from app.services.financing import (
+    CapitalStackInput,
+    GiftPropertyInput,
+    analyze_capital_stack,
+    compare_gift_property_strategies,
+)
+from app.services.germany import rent_control_lookup, transfer_tax_percent_for_state
 from app.services.ingestion import normalize_listing_row, parse_import
 from app.services.location import MockLocationEnrichmentService
 from app.services.memo import build_investment_memo
+from app.services.negotiation import NegotiationContext, build_negotiation_dossier
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
 from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal
 from app.services.seed import DEMO_LISTINGS
+from app.services.tax_briefing import build_tax_briefing
 from app.services.underwriting import TaxAssumptions, UnderwritingInput, calculate_underwriting
+from app.services.weg_health import WegHealthInput, assess_weg_health
 
 
 PIPELINE_STAGES = [
@@ -176,6 +190,26 @@ class PipelineUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+SELLER_MOTIVES = {"inheritance", "divorce", "financing_pressure", "tired_landlord", "relocation", "unknown"}
+
+
+class DealUpdate(BaseModel):
+    seller_motive: Optional[str] = None
+
+
+class EmailImportRequest(BaseModel):
+    content: str
+    source: str = "email_alert"
+
+
+class CapitalStackRequest(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "Stack A"
+    tranches: list[dict[str, Any]]
+    lender_effective_tax_rate_percent: Decimal = Decimal("30.0")
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -190,7 +224,10 @@ def list_listings(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 @app.post("/api/listings", status_code=status.HTTP_201_CREATED)
 def create_listing(payload: ListingPayload, db: Session = Depends(get_db)) -> dict[str, Any]:
     listing = Listing(**payload.model_dump(exclude_unset=True))
+    apply_state_defaults(listing)
     db.add(listing)
+    db.flush()
+    record_price_event(db, listing)
     db.commit()
     db.refresh(listing)
     return listing_to_dict(listing)
@@ -205,10 +242,17 @@ def get_listing(listing_id: int, db: Session = Depends(get_db)) -> dict[str, Any
 def update_listing(listing_id: int, payload: dict[str, Any], db: Session = Depends(get_db)) -> dict[str, Any]:
     listing = require_listing(db, listing_id)
     clean = normalize_listing_row(payload)
+    price_changed = (
+        "purchase_price" in clean
+        and clean["purchase_price"] is not None
+        and clean["purchase_price"] != listing.purchase_price
+    )
     for key, value in clean.items():
         if hasattr(listing, key):
             setattr(listing, key, value)
     listing.last_seen_at = datetime.utcnow()
+    if price_changed:
+        record_price_event(db, listing)
     db.commit()
     db.refresh(listing)
     return listing_to_dict(listing)
@@ -228,14 +272,15 @@ def import_listings(payload: ListingImportRequest, db: Session = Depends(get_db)
     if raw_payload is None:
         raise HTTPException(status_code=400, detail="Import content or items are required.")
     rows = parse_import(payload.format, raw_payload)
-    listings = []
-    for row in rows:
-        row["source"] = row.get("source") or payload.source
-        listing = Listing(**row)
-        db.add(listing)
-        listings.append(listing)
-    db.commit()
-    return {"imported": len(listings), "ids": [item.id for item in listings]}
+    return upsert_listing_rows(db, rows, payload.source)
+
+
+@app.post("/api/listings/import/email", status_code=status.HTTP_201_CREATED)
+def import_email_listings(payload: EmailImportRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    rows = parse_alert_email(payload.content, source=payload.source)
+    if not rows:
+        raise HTTPException(status_code=400, detail="No listings with a price found in the email content.")
+    return upsert_listing_rows(db, rows, payload.source)
 
 
 @app.post("/api/listings/import/demo", status_code=status.HTTP_201_CREATED)
@@ -280,6 +325,7 @@ def convert_listing_to_deal(listing_id: int, db: Session = Depends(get_db)) -> d
         heating_type=listing.heating_type,
     )
     db.add(unit)
+    rent_control = rent_control_lookup(listing.city, listing.federal_state)
     deal = Deal(
         listing_id=listing.id,
         property_id=prop.id,
@@ -287,7 +333,7 @@ def convert_listing_to_deal(listing_id: int, db: Session = Depends(get_db)) -> d
         purchase_price=listing.purchase_price,
         market_price_per_sqm=default_market_price_per_sqm(listing),
         local_reference_rent_per_sqm=default_reference_rent_per_sqm(listing),
-        rent_control_area=True,
+        rent_control_area=bool(rent_control.applies),
         pipeline_stage="New",
     )
     db.add(deal)
@@ -343,7 +389,9 @@ def score_deal_endpoint(deal_id: int, db: Session = Depends(get_db)) -> dict[str
     result = score_deal(score_input)
     result_payload = result.model_dump()
     manual_flags = [flag.code for flag in deal.risk_flags]
-    result_payload["red_flags"] = sorted(set(result_payload["red_flags"] + manual_flags))
+    weg_record = latest(deal.weg_health_records)
+    weg_flags = (weg_record.results or {}).get("flags", []) if weg_record else []
+    result_payload["red_flags"] = sorted(set(result_payload["red_flags"] + manual_flags + weg_flags))
     score = DealScore(
         deal_id=deal.id,
         total_score=result_payload["total_score"],
@@ -449,6 +497,154 @@ def update_pipeline(deal_id: int, payload: PipelineUpdate, db: Session = Depends
     return deal_detail_payload(db, deal)
 
 
+@app.patch("/api/deals/{deal_id}")
+def update_deal(deal_id: int, payload: DealUpdate, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    if payload.seller_motive is not None:
+        if payload.seller_motive not in SELLER_MOTIVES:
+            raise HTTPException(status_code=400, detail=f"seller_motive must be one of {sorted(SELLER_MOTIVES)}")
+        deal.seller_motive = payload.seller_motive
+    deal.updated_at = datetime.utcnow()
+    db.commit()
+    return deal_detail_payload(db, deal)
+
+
+@app.put("/api/deals/{deal_id}/weg-health")
+def update_weg_health(deal_id: int, payload: WegHealthInput, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    result = assess_weg_health(payload)
+    record = latest(deal.weg_health_records)
+    if record is None:
+        record = WegHealthRecord(deal_id=deal.id)
+        db.add(record)
+    record.inputs = json_safe(payload.model_dump())
+    record.results = json_safe(result.model_dump())
+    record.updated_at = datetime.utcnow()
+    db.commit()
+    return record.results
+
+
+@app.get("/api/deals/{deal_id}/negotiation-dossier")
+def negotiation_dossier(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    listing = deal.listing
+    if listing is None or listing.purchase_price is None:
+        raise HTTPException(status_code=400, detail="Deal needs a listing with a purchase price.")
+    payload = deal_detail_payload(db, deal)
+    underwriting = payload.get("latest_underwriting") or {}
+    rent_law = payload.get("rent_law") or {}
+    weg = (payload.get("weg_health") or {}).get("results") or {}
+    weg_inputs = (payload.get("weg_health") or {}).get("inputs") or {}
+    listing_dict = payload.get("listing") or {}
+
+    unfunded = None
+    measures = weg_inputs.get("planned_measures") or []
+    if measures:
+        unfunded_total = sum(
+            Decimal(str(m.get("estimated_cost_eur") or 0))
+            for m in measures
+            if m.get("funded_by") != "reserve"
+        )
+        reserve = Decimal(str(weg_inputs.get("reserve_total_eur") or 0))
+        if unfunded_total > reserve:
+            unfunded = unfunded_total - reserve
+
+    ctx = NegotiationContext(
+        asking_price=listing.purchase_price,
+        living_area_sqm=listing.living_area_sqm,
+        energy_class=listing.energy_class,
+        construction_year=listing.construction_year,
+        price_per_sqm=to_decimal(underwriting.get("price_per_sqm")) or divide(listing.purchase_price, listing.living_area_sqm),
+        market_price_per_sqm=deal.market_price_per_sqm,
+        monthly_cold_rent=listing.cold_rent_monthly,
+        market_rent_monthly=listing.market_rent_estimate_monthly,
+        legally_plausible_target_rent_per_sqm=to_decimal(rent_law.get("legally_plausible_target_rent_per_sqm")),
+        rent_control_area=deal.rent_control_area,
+        house_money_monthly=listing.house_money_monthly,
+        non_recoverable_costs_monthly=listing.non_recoverable_costs_monthly,
+        maintenance_reserve_weg=listing.maintenance_reserve_weg,
+        expected_initial_capex=listing.expected_initial_capex,
+        monthly_cashflow_before_tax=to_decimal(underwriting.get("monthly_cashflow_before_tax")),
+        dscr=to_decimal(underwriting.get("dscr")),
+        maximum_purchase_price_for_target_yield=to_decimal(
+            underwriting.get("maximum_purchase_price_for_target_yield")
+        ),
+        days_on_market=listing_dict.get("days_on_market"),
+        price_reduction_total_percent=to_decimal(listing_dict.get("price_reduction_total_percent")),
+        price_reduction_count=listing_dict.get("price_reduction_count") or 0,
+        weg_health_score=weg.get("total_score"),
+        weg_flags=weg.get("flags") or [],
+        weg_unfunded_measures_eur=unfunded,
+        seller_motive=deal.seller_motive,
+    )
+    return json_safe(build_negotiation_dossier(ctx).model_dump())
+
+
+@app.post("/api/deals/{deal_id}/capital-stack")
+def create_capital_stack(deal_id: int, payload: CapitalStackRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    underwriting = latest(deal.underwriting_cases)
+    if underwriting is None:
+        raise HTTPException(status_code=400, detail="Run underwriting first - the stack needs NOI and all-in price.")
+    results = underwriting.results or {}
+    tax = latest(deal.tax_scenarios)
+    effective_rate = Decimal("15.825")
+    if tax is not None:
+        solidarity = tax.corporate_tax_rate_percent * tax.solidarity_surcharge_rate_percent / Decimal("100")
+        trade = Decimal("0") if tax.assumes_extended_property_deduction else tax.trade_tax_rate_percent
+        effective_rate = tax.corporate_tax_rate_percent + solidarity + trade
+
+    annual_depreciation = Decimal("0")
+    if deal.listing and deal.listing.purchase_price and tax is not None:
+        annual_depreciation = (
+            deal.listing.purchase_price
+            * tax.building_share_percent
+            / Decimal("100")
+            * tax.depreciation_rate_percent
+            / Decimal("100")
+        )
+
+    stack_input = CapitalStackInput(
+        name=payload.name,
+        all_in_purchase_price=to_decimal(results.get("all_in_purchase_price")) or Decimal("0"),
+        net_operating_income=to_decimal(results.get("net_operating_income")) or Decimal("0"),
+        tranches=payload.tranches,
+        borrower_effective_tax_rate_percent=effective_rate,
+        lender_effective_tax_rate_percent=payload.lender_effective_tax_rate_percent,
+        annual_depreciation=annual_depreciation,
+    )
+    result = analyze_capital_stack(stack_input)
+    scenario = CapitalStackScenario(
+        deal_id=deal.id,
+        name=payload.name,
+        inputs=json_safe(stack_input.model_dump()),
+        results=json_safe(result.model_dump()),
+    )
+    db.add(scenario)
+    db.commit()
+    return scenario.results
+
+
+@app.get("/api/deals/{deal_id}/capital-stacks")
+def list_capital_stacks(deal_id: int, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    deal = require_deal(db, deal_id)
+    return [
+        {"id": item.id, "name": item.name, "created_at": json_safe(item.created_at), "results": item.results}
+        for item in sorted(deal.capital_stacks, key=lambda s: s.id, reverse=True)
+    ]
+
+
+@app.get("/api/deals/{deal_id}/tax-briefing")
+def tax_briefing(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    return build_tax_briefing(deal_detail_payload(db, deal))
+
+
+@app.post("/api/financing/gift-property-strategies")
+def gift_property_strategies(payload: GiftPropertyInput) -> dict[str, Any]:
+    return json_safe(compare_gift_property_strategies(payload).model_dump())
+
+
 @app.get("/api/deals/{deal_id}/investment-memo")
 def investment_memo(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     deal = require_deal(db, deal_id)
@@ -497,6 +693,58 @@ def dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
+def apply_state_defaults(listing: Listing) -> None:
+    if listing.federal_state and listing.property_transfer_tax_percent in (None, Decimal("6.5")):
+        state_rate = transfer_tax_percent_for_state(listing.federal_state)
+        if state_rate is not None:
+            listing.property_transfer_tax_percent = state_rate
+
+
+def record_price_event(db: Session, listing: Listing, source: Optional[str] = None) -> None:
+    if listing.purchase_price is None:
+        return
+    db.add(
+        ListingPriceEvent(
+            listing_id=listing.id,
+            price=listing.purchase_price,
+            source=source or listing.source or "manual",
+        )
+    )
+
+
+def upsert_listing_rows(db: Session, rows: list[dict[str, Any]], source: str) -> dict[str, Any]:
+    created: list[int] = []
+    updated: list[int] = []
+    for row in rows:
+        row["source"] = row.get("source") or source
+        existing: Optional[Listing] = None
+        if row.get("external_id"):
+            existing = (
+                db.query(Listing)
+                .filter(Listing.source == row["source"], Listing.external_id == row["external_id"])
+                .first()
+            )
+        if existing is not None:
+            new_price = row.get("purchase_price")
+            price_changed = new_price is not None and new_price != existing.purchase_price
+            for key, value in row.items():
+                if value is not None and hasattr(existing, key):
+                    setattr(existing, key, value)
+            existing.last_seen_at = datetime.utcnow()
+            if price_changed:
+                record_price_event(db, existing)
+            updated.append(existing.id)
+        else:
+            listing = Listing(**row)
+            apply_state_defaults(listing)
+            db.add(listing)
+            db.flush()
+            record_price_event(db, listing)
+            created.append(listing.id)
+    db.commit()
+    return {"imported": len(created), "updated": len(updated), "ids": created + updated}
+
+
 def require_listing(db: Session, listing_id: int) -> Listing:
     listing = db.get(Listing, listing_id)
     if listing is None:
@@ -521,6 +769,9 @@ def clear_database(db: Session) -> None:
         TaxScenario,
         LocationScore,
         DealPipelineItem,
+        WegHealthRecord,
+        CapitalStackScenario,
+        ListingPriceEvent,
         Unit,
         Deal,
         Property,
@@ -537,7 +788,23 @@ def latest(items: list[Any]) -> Optional[Any]:
 
 
 def listing_to_dict(listing: Listing) -> dict[str, Any]:
-    return model_to_dict(listing)
+    data = model_to_dict(listing)
+    if listing.first_seen_at:
+        data["days_on_market"] = max((datetime.utcnow() - listing.first_seen_at).days, 0)
+    else:
+        data["days_on_market"] = None
+    events = sorted(listing.price_events, key=lambda event: event.id)
+    data["price_events"] = [model_to_dict(event) for event in events]
+    data["price_reduction_count"] = sum(
+        1 for previous, current in zip(events, events[1:]) if current.price < previous.price
+    )
+    if events and events[0].price and events[-1].price < events[0].price:
+        data["price_reduction_total_percent"] = float(
+            round((Decimal("1") - events[-1].price / events[0].price) * Decimal("100"), 1)
+        )
+    else:
+        data["price_reduction_total_percent"] = None
+    return data
 
 
 def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
@@ -560,7 +827,19 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
         "risk_flags": [model_to_dict(flag) for flag in deal.risk_flags],
         "documents": [model_to_dict(document) for document in deal.documents],
         "pipeline_history": [model_to_dict(item) for item in deal.pipeline_items],
+        "weg_health": weg_health_payload(deal),
+        "capital_stacks": [
+            {"id": item.id, "name": item.name, "results": item.results}
+            for item in sorted(deal.capital_stacks, key=lambda s: s.id, reverse=True)
+        ],
     }
+
+
+def weg_health_payload(deal: Deal) -> Optional[dict[str, Any]]:
+    record = latest(deal.weg_health_records)
+    if record is None:
+        return None
+    return {"inputs": record.inputs, "results": record.results, "updated_at": json_safe(record.updated_at)}
 
 
 def build_underwriting_input(deal: Deal) -> UnderwritingInput:

@@ -1,4 +1,16 @@
-import { Dashboard, Deal, InvestmentMemo, Listing, PipelineStage } from "./types";
+import {
+  CapitalStackResult,
+  Dashboard,
+  Deal,
+  GiftPropertyComparison,
+  InvestmentMemo,
+  Listing,
+  NegotiationDossier,
+  PipelineStage,
+  TaxBriefing,
+  WegHealthInput,
+  WegHealthResult
+} from "./types";
 import { demoDashboard, demoDeals, demoListings, demoMemo } from "./demoData";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
@@ -98,4 +110,52 @@ export async function getInvestmentMemo(id: string | number): Promise<Investment
   } catch {
     return demoMemo;
   }
+}
+
+export async function updateWegHealth(id: number, input: WegHealthInput): Promise<WegHealthResult> {
+  return request<WegHealthResult>(`/deals/${id}/weg-health`, {
+    method: "PUT",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function updateSellerMotive(id: number, sellerMotive: string): Promise<Deal> {
+  return request<Deal>(`/deals/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ seller_motive: sellerMotive })
+  });
+}
+
+export async function getNegotiationDossier(id: string | number): Promise<NegotiationDossier> {
+  return request<NegotiationDossier>(`/deals/${id}/negotiation-dossier`);
+}
+
+export async function getTaxBriefing(id: string | number): Promise<TaxBriefing> {
+  return request<TaxBriefing>(`/deals/${id}/tax-briefing`);
+}
+
+export async function createCapitalStack(
+  id: string | number,
+  payload: { name: string; tranches: Array<Record<string, string | number>> }
+): Promise<CapitalStackResult> {
+  return request<CapitalStackResult>(`/deals/${id}/capital-stack`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getGiftPropertyStrategies(
+  payload: Record<string, string | number>
+): Promise<GiftPropertyComparison> {
+  return request<GiftPropertyComparison>(`/financing/gift-property-strategies`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function importEmailListings(content: string): Promise<{ imported: number; updated: number }> {
+  return request<{ imported: number; updated: number }>(`/listings/import/email`, {
+    method: "POST",
+    body: JSON.stringify({ content })
+  });
 }

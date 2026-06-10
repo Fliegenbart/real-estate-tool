@@ -3,6 +3,7 @@
 import {
   Building2,
   FileText,
+  Gift,
   KanbanSquare,
   LayoutDashboard,
   ListFilter,
@@ -14,7 +15,8 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/listings", label: "Listings", icon: ListFilter },
-  { href: "/pipeline", label: "Pipeline", icon: KanbanSquare }
+  { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
+  { href: "/finanzierung", label: "Chemnitz-Hebel", icon: Gift }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

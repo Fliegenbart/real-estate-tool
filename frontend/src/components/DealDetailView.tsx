@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, FileText, MapPin, PlayCircle, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, FileText, Handshake, Landmark, MapPin, PlayCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getDeal, runScore, runUnderwriting } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
 import { Deal } from "../lib/types";
+import { WegHealthPanel } from "./WegHealthPanel";
 
 export function DealDetailView({ dealId }: { dealId: string }) {
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -63,6 +64,14 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <RefreshCw size={16} />
             Scoring
           </button>
+          <Link className="button" href={`/deals/${deal.id}/dossier`}>
+            <Handshake size={16} />
+            Verhandlung
+          </Link>
+          <Link className="button" href={`/deals/${deal.id}/finanzierung`}>
+            <Landmark size={16} />
+            Finanzierung
+          </Link>
           <Link className="button" href={`/memo/${deal.id}`}>
             <FileText size={16} />
             Memo
@@ -117,6 +126,19 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <Fact label="Max Kaufpreis Zielrendite" value={formatCurrency(uw?.maximum_purchase_price_for_target_yield)} />
             <Fact label="Eigenkapital" value={formatCurrency(uw?.equity_required)} />
             <Fact label="Cash-on-Cash" value={formatPercent(uw?.cash_on_cash_return_percent)} />
+          </div>
+        </div>
+
+        <div className="panel wide">
+          <div className="panel-header">
+            <h2>Zinsbindungs-Stresstest</h2>
+            <span>{uw?.stressed_interest_rate_percent ? `Anschlusszins ${formatPercent(uw.stressed_interest_rate_percent)}` : "Nicht gerechnet"}</span>
+          </div>
+          <div className="kpi-strip">
+            <Fact label="Restschuld Ende Haltedauer" value={formatCurrency(uw?.remaining_loan_after_holding)} />
+            <Fact label="Kapitaldienst gestresst" value={formatCurrency(uw?.stressed_annual_debt_service)} />
+            <Fact label="Cashflow gestresst" value={formatCurrency(uw?.stressed_monthly_cashflow_before_tax)} />
+            <Fact label="DSCR gestresst" value={formatNumber(uw?.stressed_dscr)} />
           </div>
         </div>
 
@@ -181,6 +203,8 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </div>
           <p className="tax-warning">{uw?.tax_warning || "Tax calculation is simplified and must be reviewed by a Steuerberater."}</p>
         </div>
+
+        <WegHealthPanel deal={deal} onSaved={() => void load()} />
       </section>
     </div>
   );

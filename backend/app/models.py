@@ -55,6 +55,21 @@ class Listing(Base):
     status: Mapped[str] = mapped_column(String(40), default="active")
 
     deals: Mapped[list["Deal"]] = relationship(back_populates="listing")
+    price_events: Mapped[list["ListingPriceEvent"]] = relationship(
+        back_populates="listing", cascade="all, delete-orphan"
+    )
+
+
+class ListingPriceEvent(Base):
+    __tablename__ = "listing_price_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id"))
+    price: Mapped[Decimal] = mapped_column(Money)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    source: Mapped[str] = mapped_column(String(80), default="manual")
+
+    listing: Mapped[Listing] = relationship(back_populates="price_events")
 
 
 class Property(Base):
@@ -102,6 +117,7 @@ class Deal(Base):
     market_price_per_sqm: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
     local_reference_rent_per_sqm: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
     rent_control_area: Mapped[bool] = mapped_column(Boolean, default=True)
+    seller_motive: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -115,6 +131,33 @@ class Deal(Base):
     scores: Mapped[list["DealScore"]] = relationship(back_populates="deal")
     documents: Mapped[list["Document"]] = relationship(back_populates="deal")
     pipeline_items: Mapped[list["DealPipelineItem"]] = relationship(back_populates="deal")
+    weg_health_records: Mapped[list["WegHealthRecord"]] = relationship(back_populates="deal")
+    capital_stacks: Mapped[list["CapitalStackScenario"]] = relationship(back_populates="deal")
+
+
+class WegHealthRecord(Base):
+    __tablename__ = "weg_health_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped["Deal"] = relationship(back_populates="weg_health_records")
+
+
+class CapitalStackScenario(Base):
+    __tablename__ = "capital_stack_scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    name: Mapped[str] = mapped_column(String(120), default="Stack A")
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped["Deal"] = relationship(back_populates="capital_stacks")
 
 
 class UnderwritingCase(Base):

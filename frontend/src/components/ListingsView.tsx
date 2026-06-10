@@ -1,9 +1,8 @@
 "use client";
 
-import { ArrowUpRight, CheckCircle, FileSearch, RefreshCw, XCircle } from "lucide-react";
-import Link from "next/link";
+import { ArrowUpRight, CheckCircle, FileSearch, Mail, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { convertListing, getListings, importDemoListings, updateListingStatus } from "../lib/api";
+import { convertListing, getListings, importDemoListings, importEmailListings, updateListingStatus } from "../lib/api";
 import { filterListings, formatCurrency, formatNumber, formatPercent, grossYield, hasMissingCoreData } from "../lib/dealMetrics";
 import { Listing, ListingFilters } from "../lib/types";
 
@@ -11,6 +10,9 @@ export function ListingsView() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [filters, setFilters] = useState<ListingFilters>({ city: "", rented: "all", missingData: false });
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [showEmailImport, setShowEmailImport] = useState(false);
+  const [emailContent, setEmailContent] = useState("");
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   async function load() {
     setListings(await getListings());
@@ -25,6 +27,29 @@ export function ListingsView() {
   async function seedDemo() {
     await importDemoListings();
     await load();
+  }
+
+  async function importFromEmail() {
+    setImportStatus(null);
+    try {
+      const result = await importEmailListings(emailContent);
+      setImportStatus(`${result.imported} neu, ${result.updated} aktualisiert.`);
+      setEmailContent("");
+      await load();
+    } catch {
+      setImportStatus("Kein Listing mit Preis in der Mail gefunden.");
+    }
+  }
+
+  function marketSignal(listing: Listing): string {
+    const parts: string[] = [];
+    if (listing.days_on_market !== null && listing.days_on_market !== undefined) {
+      parts.push(`${listing.days_on_market} T.`);
+    }
+    if (listing.price_reduction_count) {
+      parts.push(`-${listing.price_reduction_total_percent ?? "?"}% (${listing.price_reduction_count}x)`);
+    }
+    return parts.join(" · ") || "-";
   }
 
   async function convert(id: number) {
@@ -48,11 +73,37 @@ export function ListingsView() {
           <h2>Listings</h2>
           <p>{filtered.length} von {listings.length} Treffern</p>
         </div>
-        <button className="button primary" onClick={seedDemo}>
-          <RefreshCw size={16} />
-          Demo laden
-        </button>
+        <div className="button-row">
+          <button className="button" onClick={() => setShowEmailImport(!showEmailImport)}>
+            <Mail size={16} />
+            E-Mail-Import
+          </button>
+          <button className="button primary" onClick={seedDemo}>
+            <RefreshCw size={16} />
+            Demo laden
+          </button>
+        </div>
       </section>
+
+      {showEmailImport && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Suchagenten-Mail einfuegen</h2>
+            {importStatus && <span className="tag">{importStatus}</span>}
+          </div>
+          <textarea
+            className="email-import-area"
+            rows={8}
+            placeholder="Inhalt der ImmoScout/Immowelt-Suchagenten-Mail hier einfuegen (Text oder HTML)..."
+            value={emailContent}
+            onChange={(event) => setEmailContent(event.target.value)}
+          />
+          <button className="button primary" onClick={importFromEmail} disabled={!emailContent.trim()}>
+            <Mail size={16} />
+            Listings importieren
+          </button>
+        </section>
+      )}
 
       <section className="filters">
         <label>
@@ -90,6 +141,7 @@ export function ListingsView() {
                 <th>Preis</th>
                 <th>Flaeche</th>
                 <th>Brutto</th>
+                <th>Markt</th>
                 <th>Energie</th>
                 <th>Status</th>
                 <th>Aktion</th>
@@ -108,6 +160,7 @@ export function ListingsView() {
                   <td>{formatCurrency(listing.purchase_price)}</td>
                   <td>{formatNumber(listing.living_area_sqm, " m2")}</td>
                   <td>{formatPercent(grossYield(listing))}</td>
+                  <td>{marketSignal(listing)}</td>
                   <td><span className="tag">{listing.energy_class || "Fehlt"}</span></td>
                   <td>{listing.status || "active"}</td>
                   <td>
@@ -129,7 +182,7 @@ export function ListingsView() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={8}>Keine Listings.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9}>Keine Listings.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -53,6 +53,10 @@ export type Listing = {
   listing_url?: string | null;
   first_seen_at?: string | null;
   status?: string;
+  days_on_market?: number | null;
+  price_events?: Array<{ id: number; price: number; recorded_at: string; source: string }>;
+  price_reduction_count?: number;
+  price_reduction_total_percent?: number | null;
 };
 
 export type Underwriting = {
@@ -76,7 +80,124 @@ export type Underwriting = {
   simple_equity_multiple?: number | null;
   simple_irr_approximation_percent?: number | null;
   annual_tax_approx?: number | null;
+  amortization_schedule?: Array<{
+    year: number;
+    payment: number;
+    interest: number;
+    principal: number;
+    remaining: number;
+  }>;
+  remaining_loan_after_holding?: number | null;
+  stressed_interest_rate_percent?: number | null;
+  stressed_annual_debt_service?: number | null;
+  stressed_monthly_cashflow_before_tax?: number | null;
+  stressed_dscr?: number | null;
   tax_warning?: string;
+};
+
+export type WegHealthInput = {
+  construction_year?: number | null;
+  total_units?: number | null;
+  community_living_area_sqm?: number | string | null;
+  reserve_total_eur?: number | string | null;
+  annual_reserve_contribution_eur?: number | string | null;
+  hausgeld_monthly_eur?: number | string | null;
+  unit_living_area_sqm?: number | string | null;
+  arrears_total_eur?: number | string | null;
+  special_levies_last_5_years_eur?: number | string | null;
+  planned_measures?: Array<{ title: string; estimated_cost_eur: number | string; funded_by: string }>;
+  professional_management?: boolean | null;
+  protocols_years_reviewed?: number;
+  litigation_pending?: boolean | null;
+  has_majority_owner?: boolean | null;
+};
+
+export type WegHealthResult = {
+  total_score: number;
+  category_scores: Record<string, number>;
+  flags: string[];
+  positive_factors: string[];
+  negative_factors: string[];
+  data_completeness_percent: number;
+  confidence: string;
+  summary: string;
+  documents_to_request: string[];
+};
+
+export type NegotiationDossier = {
+  arguments: Array<{
+    code: string;
+    title: string;
+    evidence: string;
+    estimated_discount_eur: number | null;
+    script_line: string;
+    strength: string;
+  }>;
+  leverage: string[];
+  total_justified_discount_eur: number;
+  price_ladder: {
+    asking_price: number;
+    anchor_price: number;
+    target_price: number;
+    walk_away_price: number;
+    notes: string[];
+  };
+  seller_angle: string;
+  opening_script: string[];
+  disclaimer: string;
+};
+
+export type CapitalStackResult = {
+  name: string;
+  total_debt: number;
+  total_equity: number;
+  funding_gap: number;
+  blended_interest_rate_percent: number | null;
+  annual_debt_service: number;
+  dscr: number | null;
+  monthly_cashflow_before_tax: number;
+  monthly_cashflow_after_tax_approx: number;
+  annual_tax_approx: number;
+  tranches: Array<{
+    kind: string;
+    label: string;
+    amount: number;
+    year_one_interest: number;
+    year_one_payment: number;
+  }>;
+  intercompany_interest_annual: number;
+  intercompany_tax_leakage_annual: number;
+  intercompany_note: string | null;
+  fremdvergleich_checklist: string[];
+  warnings: string[];
+};
+
+export type GiftPropertyStrategy = {
+  code: string;
+  title: string;
+  one_time_costs_eur: number;
+  annual_tax_on_rent_eur: number;
+  annual_afa_tax_shield_eur: number;
+  liquidity_unlocked_eur: number;
+  net_annual_rent_after_tax_eur: number;
+  pros: string[];
+  cons: string[];
+  steuerberater_questions: string[];
+};
+
+export type GiftPropertyComparison = {
+  assumptions: Record<string, number | string>;
+  prerequisite_warning: string;
+  strategies: GiftPropertyStrategy[];
+  disclaimer: string;
+};
+
+export type TaxBriefing = {
+  deal_id: number;
+  title: string;
+  context: Record<string, number | string | null>;
+  sections: Array<{ title: string; questions: string[] }>;
+  disclaimer: string;
 };
 
 export type DealScore = {
@@ -94,9 +215,12 @@ export type Deal = {
   title: string;
   pipeline_stage: PipelineStage;
   status?: string;
+  seller_motive?: string | null;
   listing?: Listing | null;
   latest_underwriting?: Underwriting | null;
   latest_score?: DealScore | null;
+  weg_health?: { inputs: WegHealthInput; results: WegHealthResult; updated_at: string } | null;
+  capital_stacks?: Array<{ id: number; name: string; results: CapitalStackResult }>;
   financing?: Record<string, number | string | boolean | null> | null;
   tax?: Record<string, number | string | boolean | null> | null;
   rent_law?: Record<string, number | string | boolean | string[] | null> | null;

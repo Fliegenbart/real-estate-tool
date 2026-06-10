@@ -2,6 +2,17 @@
 
 Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsankaeufe identifiziert, anreichert, underwritet, bewertet und in einer Pipeline verwaltet.
 
+## Module (Stand Juni 2026)
+
+- **Verhandlungsdossier** (`/deals/{id}/dossier`): Red Flags werden zu bezifferten Preisabschlaegen (Energieklasse-Sanierung, Capex, ueberhoehte nicht umlagefaehige Kosten, Mietpreisbremse-Deckel, Markt-Premium, WEG-Sonderumlagen), plus Preisleiter (Anker/Ziel/Walk-away), Gespraechsleitfaden und Verkaeufermotiv-Taktik.
+- **WEG-Gesundheitsscore** (Deal-Detail): Ruecklage vs. Alters-Benchmark, Hausgeld-Kosten, Zahlungsmoral (Rueckstaende), Sanierungsstau/Sonderumlagen, Governance. Flags fliessen automatisch in das Deal-Scoring ein; fehlende Daten erzeugen eine Dokumenten-Anforderungsliste.
+- **Capital-Stack-Designer** (`/deals/{id}/finanzierung`): Tranchen aus Bankdarlehen, Gesellschafterdarlehen der operativen GmbH, Verkaeuferdarlehen und Eigenkapital. Rechnet DSCR, Cashflow, Mischzins, Finanzierungsluecke und das Netto-Steuerleck von Intercompany-Zinsen (~30% beim Darlehensgeber vs. ~15,8% Abzug in der vvGmbH) inkl. Fremdvergleichs-Checkliste.
+- **Chemnitz-Hebel** (`/finanzierung`): Vier Strategien fuer eine geschenkte, abbezahlte Wohnung (privat halten / an vvGmbH verkaufen mit AfA-Step-up / einlegen / als Zusatzsicherheit) mit Einmalkosten, Steuerlast, AfA-Schild, freigesetzter Liquiditaet und Steuerberater-Fragen je Variante.
+- **Steuerberater-Briefing** (`/api/deals/{id}/tax-briefing`): generierte Fragenliste je Deal (erweiterte Kuerzung, AfA/Bodenrichtwert, Gesellschafterdarlehen, GrESt, Schenkungs-Reihenfolge).
+- **Sourcing**: E-Mail-Import fuer Suchagenten-Mails (Listings-Seite), Upsert per external_id, Preisverlauf je Listing, Tage-am-Markt und Preisreduktionen als Verhandlungshebel.
+- **Underwriting-Haertung**: echter Annuitaeten-Tilgungsplan, korrekte Restschuld, jahresgenaue After-Tax-IRR, Zinsbindungs-Stresstest (Anschlusszins +2% Default).
+- **Deutschland-Daten**: Grunderwerbsteuer je Bundesland (automatisch aus `federal_state`), Mietpreisbremse-Lookup je Stadt/Bundesland statt Pauschalannahme.
+
 ## Was gebaut ist
 
 - Backend mit FastAPI, SQLAlchemy 2, Pydantic, Alembic und SQLite-Fallback.
@@ -106,6 +117,14 @@ Steuer ist bewusst nur eine Naeherung. Die App zeigt und speichert die Warnung: 
 - `POST /api/deals/{id}/documents`
 - `PATCH /api/deals/{id}/pipeline`
 - `GET /api/deals/{id}/investment-memo`
+- `PUT /api/deals/{id}/weg-health`
+- `GET /api/deals/{id}/negotiation-dossier`
+- `POST /api/deals/{id}/capital-stack`
+- `GET /api/deals/{id}/capital-stacks`
+- `GET /api/deals/{id}/tax-briefing`
+- `PATCH /api/deals/{id}` (seller_motive)
+- `POST /api/listings/import/email`
+- `POST /api/financing/gift-property-strategies`
 - `GET /api/dashboard`
 
 ## Annahmen

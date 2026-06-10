@@ -582,6 +582,139 @@ td {
   padding-left: 18px;
 }
 
+.ladder-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ladder-step {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.ladder-step span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ladder-step strong {
+  font-size: 22px;
+}
+
+.ladder-step.risk {
+  border-left-color: var(--risk);
+}
+
+.ladder-step.muted {
+  border-left-color: var(--border);
+  opacity: 0.75;
+}
+
+.argument-list {
+  display: grid;
+  gap: 12px;
+}
+
+.argument {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent-2);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 14px;
+}
+
+.argument.strength-hard {
+  border-left-color: var(--risk);
+}
+
+.argument-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.argument-evidence {
+  color: var(--muted);
+  margin: 8px 0 6px;
+}
+
+.argument-script {
+  margin: 0;
+  font-style: italic;
+  color: #25302c;
+}
+
+.weg-form {
+  display: grid;
+  gap: 14px;
+}
+
+.weg-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.weg-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weg-field input,
+.weg-field select {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.email-import-area {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  margin-bottom: 12px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.motive-select {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.motive-select select,
+.stack-name {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 10px;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -621,7 +754,10 @@ td {
   .deal-grid,
   .fact-grid,
   .kpi-strip,
-  .risk-grid {
+  .risk-grid,
+  .ladder-strip,
+  .strategy-grid,
+  .weg-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -629,8 +765,17 @@ td {
 @media print {
   .sidebar,
   .topbar,
-  .deal-header .button {
+  .deal-header .button,
+  .deal-header .button-row,
+  .motive-select {
     display: none;
+  }
+
+  .panel,
+  .ladder-step,
+  .argument {
+    box-shadow: none;
+    break-inside: avoid;
   }
 
   .app-shell {

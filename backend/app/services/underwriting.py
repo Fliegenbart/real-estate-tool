@@ -70,6 +70,8 @@ class UnderwritingInput(BaseModel):
     equity_contribution: Optional[Decimal] = None
     tax: TaxAssumptions = Field(default_factory=TaxAssumptions)
     holding_period_years: int = 10
+    interest_fixation_years: int = 10
+    refi_stress_interest_delta_percent: Decimal = Decimal("2.0")
     exit_cap_rate_percent: Optional[Decimal] = None
     exit_value_growth_percent: Decimal = Decimal("1.0")
     target_net_yield_percent: Decimal = Decimal("4.0")
@@ -99,6 +101,12 @@ class UnderwritingResult(BaseModel):
     simple_irr_approximation_percent: Optional[Decimal]
     annual_taxable_income_approx: Decimal
     annual_tax_approx: Decimal
+    amortization_schedule: list[dict]
+    remaining_loan_after_holding: Decimal
+    stressed_interest_rate_percent: Optional[Decimal]
+    stressed_annual_debt_service: Optional[Decimal]
+    stressed_monthly_cashflow_before_tax: Optional[Decimal]
+    stressed_dscr: Optional[Decimal]
     formulas: dict[str, str]
     tax_warning: str
 
@@ -128,6 +136,13 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
     annual_amortization = loan_amount * data.amortization_rate_percent / Decimal("100")
     annual_debt_service = annual_interest + annual_amortization
     dscr_value = safe_div(net_operating_income, annual_debt_service)
+
+    schedule = build_amortization_schedule(
+        loan_amount,
+        data.financing_interest_rate_percent,
+        data.amortization_rate_percent,
+        max(data.holding_period_years, data.interest_fixation_years),
+    )
 
     taxable_income = net_operating_income
     if data.tax.interest_deductible:
@@ -166,15 +181,46 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
             Decimal("1") + data.exit_value_growth_percent / Decimal("100")
         ) ** data.holding_period_years
 
-    remaining_loan = max(loan_amount - annual_amortization * data.holding_period_years, Decimal("0"))
+    holding_rows = schedule[: data.holding_period_years]
+    remaining_loan = holding_rows[-1]["remaining"] if holding_rows else loan_amount
     final_equity_value = simple_exit_value - remaining_loan
-    total_equity_cashflows = cashflow_after_tax * data.holding_period_years + final_equity_value
+
+    # Year-by-year after-tax cashflows: interest declines along the annuity
+    # schedule, so taxable income and cash taxes rise over the holding period.
+    yearly_after_tax_cashflows: list[Decimal] = []
+    for row in holding_rows:
+        year_taxable = net_operating_income - annual_depreciation
+        if data.tax.interest_deductible:
+            year_taxable -= row["interest"]
+        year_tax = max(year_taxable, Decimal("0")) * data.tax.effective_tax_rate_percent / Decimal("100")
+        yearly_after_tax_cashflows.append(net_operating_income - row["payment"] - year_tax)
+    if not yearly_after_tax_cashflows:
+        yearly_after_tax_cashflows = [cashflow_after_tax for _ in range(max(data.holding_period_years, 1))]
+
+    total_equity_cashflows = sum(yearly_after_tax_cashflows) + final_equity_value
     equity_multiple = safe_div(total_equity_cashflows, equity_required) or Decimal("0")
     irr = approximate_irr(
         [-equity_required]
-        + [cashflow_after_tax for _ in range(max(data.holding_period_years - 1, 0))]
-        + [cashflow_after_tax + final_equity_value]
+        + yearly_after_tax_cashflows[:-1]
+        + [yearly_after_tax_cashflows[-1] + final_equity_value]
     )
+
+    # Refinancing stress: remaining loan at the end of the fixed-interest
+    # period is refinanced at the stressed rate with unchanged amortization.
+    stressed_rate: Optional[Decimal] = None
+    stressed_debt_service: Optional[Decimal] = None
+    stressed_cashflow_monthly: Optional[Decimal] = None
+    stressed_dscr: Optional[Decimal] = None
+    if loan_amount > 0 and data.interest_fixation_years > 0:
+        fixation_rows = schedule[: data.interest_fixation_years]
+        remaining_at_refi = fixation_rows[-1]["remaining"] if fixation_rows else loan_amount
+        if remaining_at_refi > 0:
+            stressed_rate = data.financing_interest_rate_percent + data.refi_stress_interest_delta_percent
+            stressed_debt_service = remaining_at_refi * (
+                stressed_rate + data.amortization_rate_percent
+            ) / Decimal("100")
+            stressed_cashflow_monthly = (net_operating_income - stressed_debt_service) / Decimal("12")
+            stressed_dscr = safe_div(net_operating_income, stressed_debt_service)
 
     return UnderwritingResult(
         price_per_sqm=money(price_per_sqm),
@@ -198,6 +244,23 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
         simple_irr_approximation_percent=percent(irr * Decimal("100")) if irr is not None else None,
         annual_taxable_income_approx=money(taxable_income),
         annual_tax_approx=money(annual_tax),
+        amortization_schedule=[
+            {
+                "year": row["year"],
+                "payment": money(row["payment"]),
+                "interest": money(row["interest"]),
+                "principal": money(row["principal"]),
+                "remaining": money(row["remaining"]),
+            }
+            for row in holding_rows
+        ],
+        remaining_loan_after_holding=money(remaining_loan),
+        stressed_interest_rate_percent=percent(stressed_rate) if stressed_rate is not None else None,
+        stressed_annual_debt_service=money(stressed_debt_service) if stressed_debt_service is not None else None,
+        stressed_monthly_cashflow_before_tax=money(stressed_cashflow_monthly)
+        if stressed_cashflow_monthly is not None
+        else None,
+        stressed_dscr=percent(stressed_dscr) if stressed_dscr is not None else None,
         formulas={
             "all_in_purchase_price": "purchase_price + broker_fee + transfer_tax + notary_land_registry + initial_capex",
             "net_operating_income": "annual_cold_rent - non_recoverable_costs - maintenance - vacancy_allowance - property_management",
@@ -208,6 +271,36 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
         },
         tax_warning="Tax calculation is simplified and must be reviewed by a Steuerberater.",
     )
+
+
+def build_amortization_schedule(
+    loan_amount: Decimal,
+    interest_rate_percent: Decimal,
+    amortization_rate_percent: Decimal,
+    years: int,
+) -> list[dict]:
+    """German annuity loan: constant payment, declining interest share."""
+    rows: list[dict] = []
+    if loan_amount <= 0 or years <= 0:
+        return rows
+    interest_rate = interest_rate_percent / Decimal("100")
+    annual_payment = loan_amount * (interest_rate_percent + amortization_rate_percent) / Decimal("100")
+    remaining = loan_amount
+    for year in range(1, years + 1):
+        interest = remaining * interest_rate
+        principal = max(min(annual_payment - interest, remaining), Decimal("0"))
+        payment = interest + principal
+        remaining = remaining - principal
+        rows.append(
+            {
+                "year": year,
+                "payment": payment,
+                "interest": interest,
+                "principal": principal,
+                "remaining": remaining,
+            }
+        )
+    return rows
 
 
 def approximate_irr(cashflows: list[Decimal]) -> Optional[Decimal]:

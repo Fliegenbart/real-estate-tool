@@ -6,6 +6,7 @@ def build_investment_memo(deal_payload: dict) -> dict:
     underwriting = deal_payload.get("latest_underwriting") or {}
     score = deal_payload.get("latest_score") or {}
     rent = deal_payload.get("rent_law") or {}
+    weg = (deal_payload.get("weg_health") or {}).get("results") or {}
 
     recommendation = score.get("next_recommended_action") or "Run underwriting and scoring before making an offer."
     red_flags = score.get("red_flags") or []
@@ -79,6 +80,17 @@ def build_investment_memo(deal_payload: dict) -> dict:
                     f"Energy class: {listing.get('energy_class')}",
                     f"House money: {listing.get('house_money_monthly')}",
                     f"Maintenance reserve WEG: {listing.get('maintenance_reserve_weg')}",
+                    f"WEG health score: {weg.get('total_score', 'not assessed')} ({weg.get('confidence', 'no data')})",
+                    weg.get("summary") or "WEG-Gesundheit noch nicht erfasst - Dokumente anfordern.",
+                ],
+            },
+            {
+                "title": "Financing stress test",
+                "items": [
+                    f"Remaining loan after holding period: {underwriting.get('remaining_loan_after_holding')}",
+                    f"Refi stress rate: {underwriting.get('stressed_interest_rate_percent')}%",
+                    f"Stressed monthly cashflow: {underwriting.get('stressed_monthly_cashflow_before_tax')}",
+                    f"Stressed DSCR: {underwriting.get('stressed_dscr')}",
                 ],
             },
             {"title": "Red flags", "items": red_flags or ["No hard red flags from current model."]},
