@@ -23,6 +23,8 @@ from app.models import (
     ListingPriceEvent,
     LocationScore,
     Property,
+    Region,
+    RegionMetric,
     RiskFlag,
     TaxScenario,
     UnderwritingCase,
@@ -44,6 +46,16 @@ from app.services.ingestion import normalize_listing_row, parse_import
 from app.services.location import MockLocationEnrichmentService
 from app.services.memo import build_investment_memo
 from app.services.negotiation import NegotiationContext, build_negotiation_dossier
+from app.services.region_data import REGION_DATA_SOURCES, SEED_CITIES, SEED_METRIC_COLUMNS, SEED_SOURCE_NAME
+from app.services.region_import import (
+    RegionImportConfig,
+    find_or_create_region,
+    get_or_create_source,
+    import_region_csv,
+    refresh_own_market_metrics,
+    set_metric,
+)
+from app.services.region_score import score_region
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
 from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal
 from app.services.seed import DEMO_LISTINGS
@@ -378,7 +390,16 @@ def convert_listing_to_deal(listing_id: int, db: Session = Depends(get_db)) -> d
     db.add(FinancingScenario(deal_id=deal.id))
     db.add(TaxScenario(deal_id=deal.id))
     location = MockLocationEnrichmentService().enrich(listing.city, listing.postal_code)
-    db.add(LocationScore(deal_id=deal.id, **location.model_dump()))
+    location_score = LocationScore(deal_id=deal.id, **location.model_dump())
+    region = find_region_for_city(db, listing.city)
+    if region is not None:
+        region_result = score_region(region_metrics_dict(region), region.population)
+        location_score.population_trend_score = region_result.category_scores["demand_stability"]
+        location_score.vacancy_risk_score = region_result.category_scores["demand_stability"]
+        location_score.purchasing_power_score = region_result.category_scores["economic_base"]
+        location_score.employer_access_score = region_result.category_scores["economic_base"]
+        location_score.source = "region_data"
+    db.add(location_score)
     db.add(DealPipelineItem(deal_id=deal.id, stage="New"))
     listing.status = "converted"
     db.commit()
@@ -759,6 +780,105 @@ def delete_data_source(source_id: int, db: Session = Depends(get_db)) -> dict[st
     return {"deleted": source_id}
 
 
+@app.get("/api/regions")
+def list_regions(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    regions = db.query(Region).order_by(Region.name).all()
+    payloads = [region_payload(region) for region in regions]
+    payloads.sort(key=lambda item: item["score"]["total_score"], reverse=True)
+    return payloads
+
+
+@app.get("/api/regions/{region_id}")
+def get_region(region_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    region = db.get(Region, region_id)
+    if region is None:
+        raise HTTPException(status_code=404, detail="Region not found.")
+    payload = region_payload(region)
+    payload["metrics_detail"] = [
+        {
+            "metric": metric.metric,
+            "value": json_safe(metric.value),
+            "year": metric.year,
+            "source_id": metric.source_id,
+        }
+        for metric in sorted(region.metrics, key=lambda m: m.metric)
+    ]
+    return payload
+
+
+@app.post("/api/regions/seed-defaults", status_code=status.HTTP_201_CREATED)
+def seed_region_defaults(db: Session = Depends(get_db)) -> dict[str, Any]:
+    existing_sources = {name for (name,) in db.query(DataSource.name).all()}
+    for row in REGION_DATA_SOURCES:
+        if row["name"] not in existing_sources:
+            db.add(DataSource(**row))
+    db.flush()
+    source = get_or_create_source(db, SEED_SOURCE_NAME)
+
+    created = 0
+    for name, state, population, price, rent, vacancy, unemployment, forecast in SEED_CITIES:
+        region = find_or_create_region(
+            db, name=name, level="gemeinde", federal_state=state, population=population
+        )
+        values = [price, rent, vacancy, unemployment, forecast]
+        for metric_name, value in zip(SEED_METRIC_COLUMNS, values):
+            existing = (
+                db.query(RegionMetric)
+                .filter(RegionMetric.region_id == region.id, RegionMetric.metric == metric_name)
+                .first()
+            )
+            # Seed never overwrites real imports or own flow data.
+            if existing is not None and existing.source_id != source.id:
+                continue
+            set_metric(db, region, metric_name, Decimal(str(value)), source.id)
+        created += 1
+    db.commit()
+    return {"regions": created}
+
+
+@app.post("/api/regions/import", status_code=status.HTTP_201_CREATED)
+def import_regions(config: RegionImportConfig, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return import_region_csv(db, config)
+
+
+@app.post("/api/regions/refresh-own-metrics")
+def refresh_own_metrics(db: Session = Depends(get_db)) -> dict[str, Any]:
+    return refresh_own_market_metrics(db)
+
+
+def region_metrics_dict(region: Region) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    for metric in sorted(region.metrics, key=lambda m: m.id):
+        metrics[metric.metric] = metric.value
+    return metrics
+
+
+def region_payload(region: Region) -> dict[str, Any]:
+    metrics = region_metrics_dict(region)
+    score = score_region(metrics, region.population)
+    return {
+        "id": region.id,
+        "ags": region.ags,
+        "name": region.name,
+        "level": region.level,
+        "federal_state": region.federal_state,
+        "population": region.population,
+        "metrics": json_safe(metrics),
+        "score": json_safe(score.model_dump()),
+    }
+
+
+def find_region_for_city(db: Session, city: Optional[str]) -> Optional[Region]:
+    if not city:
+        return None
+    return (
+        db.query(Region)
+        .filter(Region.level.in_(["gemeinde", "kreis"]))
+        .filter(Region.name.ilike(city.strip()))
+        .first()
+    )
+
+
 @app.get("/api/deals/{deal_id}/investment-memo")
 def investment_memo(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     deal = require_deal(db, deal_id)
@@ -954,6 +1074,7 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
             for item in sorted(deal.capital_stacks, key=lambda s: s.id, reverse=True)
         ],
         "geo_context": geo_context_payload(latest(deal.geo_contexts)),
+        "region": deal_region_summary(db, deal),
         "signals": [
             signal.model_dump()
             for signal in derive_signals(
@@ -961,6 +1082,21 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
                 {"market_price_per_sqm": deal.market_price_per_sqm},
             )
         ],
+    }
+
+
+def deal_region_summary(db: Session, deal: Deal) -> Optional[dict[str, Any]]:
+    region = find_region_for_city(db, deal.listing.city if deal.listing else None)
+    if region is None:
+        return None
+    score = score_region(region_metrics_dict(region), region.population)
+    return {
+        "id": region.id,
+        "name": region.name,
+        "total_score": score.total_score,
+        "rent_factor": json_safe(score.rent_factor),
+        "red_flags": score.red_flags,
+        "recommendation": score.recommendation,
     }
 
 

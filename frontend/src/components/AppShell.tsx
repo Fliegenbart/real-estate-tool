@@ -2,6 +2,7 @@
 
 import {
   Building2,
+  Compass,
   Database,
   FileText,
   Gift,
@@ -15,6 +16,7 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/standorte", label: "Standorte", icon: Compass },
   { href: "/listings", label: "Listings", icon: ListFilter },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/finanzierung", label: "Chemnitz-Hebel", icon: Gift },

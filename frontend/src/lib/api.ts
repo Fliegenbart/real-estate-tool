@@ -9,6 +9,7 @@ import {
   Listing,
   NegotiationDossier,
   PipelineStage,
+  RegionPayload,
   RiskMatrix,
   TaxBriefing,
   WegHealthInput,
@@ -161,6 +162,22 @@ export async function importEmailListings(content: string): Promise<{ imported: 
     method: "POST",
     body: JSON.stringify({ content })
   });
+}
+
+export async function getRegions(): Promise<RegionPayload[]> {
+  return request<RegionPayload[]>(`/regions`);
+}
+
+export async function getRegion(id: number): Promise<RegionPayload> {
+  return request<RegionPayload>(`/regions/${id}`);
+}
+
+export async function seedRegionDefaults(): Promise<{ regions: number }> {
+  return request<{ regions: number }>(`/regions/seed-defaults`, { method: "POST" });
+}
+
+export async function refreshOwnRegionMetrics(): Promise<{ cities_updated: number }> {
+  return request<{ cities_updated: number }>(`/regions/refresh-own-metrics`, { method: "POST" });
 }
 
 export async function getRiskMatrix(id: string | number): Promise<RiskMatrix> {

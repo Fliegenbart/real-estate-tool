@@ -192,8 +192,18 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         <div className="panel">
           <div className="panel-header">
             <h2>Lage</h2>
-            <MapPin size={17} />
+            {deal.region ? (
+              <span className={`score ${scoreTone(deal.region.total_score)}`}>Standort {deal.region.total_score}</span>
+            ) : (
+              <MapPin size={17} />
+            )}
           </div>
+          {deal.region && (
+            <p className="recommendation">
+              {deal.region.name}: {deal.region.recommendation}
+              {deal.region.rent_factor ? ` (Markt-Faktor ~${deal.region.rent_factor})` : ""}
+            </p>
+          )}
           <div className="location-list">
             {Object.entries(deal.location || {}).filter(([key]) => key.endsWith("_score")).map(([key, value]) => (
               <div className="pipeline-bar" key={key}>

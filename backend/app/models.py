@@ -136,6 +136,36 @@ class Deal(Base):
     geo_contexts: Mapped[list["GeoContext"]] = relationship(back_populates="deal")
 
 
+class Region(Base):
+    __tablename__ = "regions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ags: Mapped[Optional[str]] = mapped_column(String(12), nullable=True, unique=True)
+    name: Mapped[str] = mapped_column(String(160))
+    level: Mapped[str] = mapped_column(String(40), default="gemeinde")  # kreis | gemeinde | stadtteil
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("regions.id"), nullable=True)
+    federal_state: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    population: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    metrics: Mapped[list["RegionMetric"]] = relationship(
+        back_populates="region", cascade="all, delete-orphan"
+    )
+
+
+class RegionMetric(Base):
+    __tablename__ = "region_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    region_id: Mapped[int] = mapped_column(ForeignKey("regions.id"))
+    metric: Mapped[str] = mapped_column(String(80))
+    value: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(ForeignKey("data_sources.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    region: Mapped[Region] = relationship(back_populates="metrics")
+
+
 class DataSource(Base):
     __tablename__ = "data_sources"
 

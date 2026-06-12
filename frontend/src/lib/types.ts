@@ -253,6 +253,40 @@ export type DataSource = {
   notes?: string | null;
 };
 
+export type RegionScore = {
+  total_score: number;
+  category_scores: Record<string, number>;
+  gross_yield_percent: number | null;
+  rent_factor: number | null;
+  red_flags: string[];
+  positive_factors: string[];
+  negative_factors: string[];
+  recommendation: string;
+  data_completeness_percent: number;
+  explanation: string;
+};
+
+export type RegionPayload = {
+  id: number;
+  ags?: string | null;
+  name: string;
+  level: string;
+  federal_state?: string | null;
+  population?: number | null;
+  metrics: Record<string, number>;
+  score: RegionScore;
+  metrics_detail?: Array<{ metric: string; value: number; year: number | null; source_id: number | null }>;
+};
+
+export type DealRegionSummary = {
+  id: number;
+  name: string;
+  total_score: number;
+  rent_factor: number | null;
+  red_flags: string[];
+  recommendation: string;
+};
+
 export type TaxBriefing = {
   deal_id: number;
   title: string;
@@ -283,6 +317,7 @@ export type Deal = {
   weg_health?: { inputs: WegHealthInput; results: WegHealthResult; updated_at: string } | null;
   capital_stacks?: Array<{ id: number; name: string; results: CapitalStackResult }>;
   geo_context?: GeoContext | null;
+  region?: DealRegionSummary | null;
   signals?: Signal[];
   financing?: Record<string, number | string | boolean | null> | null;
   tax?: Record<string, number | string | boolean | null> | null;
