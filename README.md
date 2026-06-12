@@ -31,6 +31,31 @@ Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsa
 - Dokument-Metadaten und manuelle WEG-/Technik-Risiko-Flags.
 - Next.js UI: Dashboard, Listings, Deal-Detail, Pipeline-Kanban und Investment Memo.
 
+## Automatischer Listing-Import (E-Mail-Poller)
+
+Suchagenten-Mails (ImmoScout/Immowelt/Kleinanzeigen) landen per Gmail-Filter im Label
+`immo-agent`. Der Poller (`app/services/email_poller.py`) liest ungelesene Mails per IMAP,
+schickt sie an `POST /api/listings/import/email` und markiert sie als gelesen.
+Mails ohne erkennbares Listing werden uebersprungen; bei API-Fehlern bleiben sie
+ungelesen und werden beim naechsten Lauf erneut versucht.
+
+Setup (macOS):
+
+1. Google App-Passwort erstellen (myaccount.google.com/apppasswords, 2FA noetig)
+   und in `backend/.env` als `IMAP_PASSWORD` eintragen (Vorlage: `.env.example`).
+2. launchd-Jobs installieren:
+
+```bash
+cp backend/scripts/de.davidwegener.immo-backend.plist ~/Library/LaunchAgents/
+cp backend/scripts/de.davidwegener.immo-poller.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/de.davidwegener.immo-backend.plist
+launchctl load ~/Library/LaunchAgents/de.davidwegener.immo-poller.plist
+```
+
+Das Backend laeuft dann dauerhaft auf Port 8000, der Poller alle 30 Minuten.
+Logs: `/tmp/immo-backend.log` und `/tmp/immo-poller.log`. Manueller Lauf:
+`cd backend && .venv/bin/python -m app.services.email_poller`.
+
 ## Lokal starten
 
 Backend:

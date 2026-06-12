@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.davidwegener.immo-backend</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/davidwegener/real-estate-tool/backend/.venv/bin/uvicorn</string>
+        <string>app.main:app</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/davidwegener/real-estate-tool/backend</string>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/immo-backend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/immo-backend.err</string>
+</dict>
+</plist>
