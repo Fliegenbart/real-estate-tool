@@ -91,10 +91,15 @@ def extract_body(message: Message) -> str:
 def import_mail_content(api_base: str, content: str, source: str) -> tuple[bool, str]:
     """Returns (processed, detail). processed=True also for 'no listings found'
     so the mail gets marked seen instead of retrying forever."""
+    headers = {}
+    api_key = os.environ.get("API_KEY")
+    if api_key:
+        headers["X-API-Key"] = api_key
     try:
         response = httpx.post(
             f"{api_base}/listings/import/email",
             json={"content": content, "source": source},
+            headers=headers,
             timeout=30,
         )
     except httpx.HTTPError as error:

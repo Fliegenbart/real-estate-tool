@@ -1,0 +1,56 @@
+# Production stack for the Hetzner server: Postgres + API + Mail-Poller.
+# Ports 80/443 belong to VoxDrop's nginx, so the API listens on its own port
+# and the Vercel frontend proxies to it server-side (next.config rewrite).
+# Config lives in .env next to this file (see .env.prod.example).
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-realestate}
+      POSTGRES_USER: ${POSTGRES_USER:-realestate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-realestate} -d ${POSTGRES_DB:-realestate}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-realestate}:${POSTGRES_PASSWORD:?set in .env}@db:5432/${POSTGRES_DB:-realestate}
+      API_KEY: ${API_KEY:?set in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://real-estate-tool-pi.vercel.app}
+    ports:
+      - "${BACKEND_PORT:-8201}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  poller:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: sh -c 'while true; do python -m app.services.email_poller; sleep 1800; done'
+    environment:
+      API_BASE_URL: http://backend:8000/api
+      API_KEY: ${API_KEY}
+      IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
+      IMAP_USER: ${IMAP_USER}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+      IMAP_SINCE_DAYS: ${IMAP_SINCE_DAYS:-30}
+      POLLER_STATE_FILE: /data/poller_seen.json
+    volumes:
+      - poller-state:/data
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:
+  poller-state:

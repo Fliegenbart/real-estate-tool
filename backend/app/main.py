@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -93,13 +95,38 @@ DOCUMENT_TYPES = {
 
 
 app = FastAPI(title="German Real Estate Acquisition MVP", version="0.1.0")
+
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """Hosted deployments set API_KEY; without it (local dev) the API is open.
+    Health stays public for monitoring, OPTIONS for CORS preflights."""
+    expected = os.environ.get("API_KEY")
+    if (
+        expected
+        and request.method != "OPTIONS"
+        and request.url.path.startswith("/api")
+        and request.url.path != "/api/health"
+        and request.headers.get("x-api-key") != expected
+    ):
+        return JSONResponse(status_code=401, content={"detail": "API key required."})
+    return await call_next(request)
+
 
 init_db()
 
