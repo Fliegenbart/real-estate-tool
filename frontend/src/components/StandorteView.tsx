@@ -1,10 +1,56 @@
 "use client";
 
-import { Compass, Database, RefreshCw } from "lucide-react";
+import { Database, Info, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getRegion, getRegions, refreshOwnRegionMetrics, seedRegionDefaults } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
 import { RegionPayload } from "../lib/types";
+
+const COLUMN_HELP: Record<string, string> = {
+  score:
+    "Gesamtscore 0-100 fuer deine Strategie: 20 Jahre halten, dann vvGmbH mit Portfolio verkaufen. Gewichtung: Ertragskraft 35%, Nachfragestabilitaet 30%, Wirtschaftsbasis 20%, Exit-Liquiditaet 15%. Harte Risiken (strukturelles Schrumpfen, zu schwache Rendite) deckeln den Score zusaetzlich.",
+  faktor:
+    "Vervielfaeltiger: Kaufpreis geteilt durch Jahreskaltmiete. Faktor 16 = du zahlst 16 Jahresmieten fuer den Kauf. Je niedriger, desto mehr Cashflow. Achtung: gerechnet auf den Stadt-Median - dein Deal-Segment (Verhandlung, einfache Lagen) liegt meist darunter.",
+  rendite:
+    "Bruttomietrendite: Jahreskaltmiete geteilt durch Kaufpreis (Kehrwert des Faktors). Unter 3,5% gilt die Stadt als reiner Wertsteigerungsmarkt - fuer die Cashflow-Strategie gedeckelt.",
+  leerstand:
+    "Anteil leerstehender Wohnungen (Orientierung: Zensus 2022). DAS Kernrisiko bei guenstigen Lagen: Leerstand kostet dich nicht nur Miete, sondern verlaengert auch jede Neuvermietung. Ueber 8% plus Schrumpfungsprognose = strukturelles Risiko, ueber 10% harte Red Flag.",
+  prognose:
+    "Erwartete Bevoelkerungsentwicklung bis 2040 in Prozent - endet genau an deinem geplanten Exit-Horizont. Schrumpfung heisst: weniger Mieter UND weniger Kaeufer fuer dein Portfolio. Unter -8% Red Flag.",
+  alq: "Arbeitslosenquote. Proxy fuer Mieterbonitaet, Mietausfallrisiko und Fluktuation - wichtiger als die Miethoehe selbst, wenn du auf puenktliche Zahler angewiesen bist.",
+  preis:
+    "Median-Angebotspreis je m2 Wohnflaeche. Startwert ist eine grobe Schaetzung; sobald mindestens 3 eigene Listings aus deinem Suchagenten-Zufluss vorliegen, ersetzt deren Median automatisch den Schaetzwert.",
+  eigene:
+    "Anzahl Listings aus deinem E-Mail-Zufluss in dieser Stadt. Ab 3 Stueck rechnet das Tool mit DEINEN Marktdaten (Median-Preis, -Miete) statt mit Schaetzungen - je laenger die Suchagenten laufen, desto besser wird der Score.",
+};
+
+const CATEGORY_INFO: Record<string, { label: string; help: string }> = {
+  yield_power: {
+    label: "Ertragskraft",
+    help: "Wie viel Miete bekommst du fuer den Kaufpreis? Skala: 3% Bruttorendite = 15 Punkte, 7% = 95 Punkte. Traegt 35% des Gesamtscores - der Motor der Cashflow-Strategie.",
+  },
+  demand_stability: {
+    label: "Nachfragestabilitaet",
+    help: "Leerstand heute + Bevoelkerungsprognose 2040, je zur Haelfte. Die Versicherung deines Cashflows: Hoher Leerstand in einer schrumpfenden Stadt ist strukturell (nicht zyklisch) und deckelt diese Kategorie auf 25. Traegt 30%.",
+  },
+  economic_base: {
+    label: "Wirtschaftsbasis",
+    help: "Arbeitslosenquote und Kaufkraft: Traegt die lokale Wirtschaft die Mieten dauerhaft? Eine Uni, Klinik oder ein Grossarbeitgeber stabilisiert kleine Staedte ueberproportional. Traegt 20%.",
+  },
+  exit_liquidity: {
+    label: "Exit-Liquiditaet",
+    help: "Marktgroesse (Einwohner, logarithmisch) plus Aktivitaet des Angebotsmarkts. Zaehlt, weil die vvGmbH in ~20 Jahren MIT Portfolio verkauft werden soll: In einem 40.000-Einwohner-Markt findest du dann schwer einen Kaeufer. Traegt 15%.",
+  },
+};
+
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="info-tip" tabIndex={0}>
+      <Info size={13} />
+      <span className="info-tip-bubble">{text}</span>
+    </span>
+  );
+}
 
 export function StandorteView() {
   const [regions, setRegions] = useState<RegionPayload[]>([]);
@@ -116,14 +162,14 @@ export function StandorteView() {
             <thead>
               <tr>
                 <th>Stadt</th>
-                <th>Score</th>
-                <th>Faktor</th>
-                <th>Bruttorendite</th>
-                <th>Leerstand</th>
-                <th>Prognose 2040</th>
-                <th>ALQ</th>
-                <th>Preis/m2</th>
-                <th>Eigene Listings</th>
+                <th>Score <InfoTip text={COLUMN_HELP.score} /></th>
+                <th>Faktor <InfoTip text={COLUMN_HELP.faktor} /></th>
+                <th>Bruttorendite <InfoTip text={COLUMN_HELP.rendite} /></th>
+                <th>Leerstand <InfoTip text={COLUMN_HELP.leerstand} /></th>
+                <th>Prognose 2040 <InfoTip text={COLUMN_HELP.prognose} /></th>
+                <th>ALQ <InfoTip text={COLUMN_HELP.alq} /></th>
+                <th>Preis/m2 <InfoTip text={COLUMN_HELP.preis} /></th>
+                <th>Eigene Listings <InfoTip text={COLUMN_HELP.eigene} /></th>
               </tr>
             </thead>
             <tbody>
@@ -161,9 +207,12 @@ export function StandorteView() {
           </div>
           <p className="recommendation">{selected.score.recommendation}</p>
           <div className="score-bars">
-            {Object.entries(selected.score.category_scores).map(([label, value]) => (
-              <div className="pipeline-bar" key={label}>
-                <span>{label.replaceAll("_", " ")}</span>
+            {Object.entries(selected.score.category_scores).map(([key, value]) => (
+              <div className="pipeline-bar" key={key}>
+                <span>
+                  {CATEGORY_INFO[key]?.label || key.replaceAll("_", " ")}{" "}
+                  {CATEGORY_INFO[key] && <InfoTip text={CATEGORY_INFO[key].help} />}
+                </span>
                 <div className="bar-track"><div style={{ width: `${value}%` }} /></div>
                 <strong>{value}</strong>
               </div>
