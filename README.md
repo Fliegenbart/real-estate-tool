@@ -32,6 +32,24 @@ Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsa
 - Dokument-Metadaten und manuelle WEG-/Technik-Risiko-Flags.
 - Next.js UI: Dashboard, Listings, Deal-Detail, Pipeline-Kanban und Investment Memo.
 
+## Produktion (Hetzner + Vercel)
+
+Das Backend laeuft produktiv auf dem Hetzner-Server (5.9.106.75) unter `/opt/immo-tool`:
+PostGIS + API (Port 8201) + Mail-Poller als Docker-Stack (`docker-compose.prod.yml`,
+Secrets in `/opt/immo-tool/.env`). Die API verlangt einen `X-API-Key` (Env `API_KEY`);
+`/api/health` bleibt offen. Firewall: Port 8201 ist in der DOCKER-USER-Chain per
+conntrack-Regel auf den Original-Zielport freigegeben (Docker-DNAT!), persistiert via
+netfilter-persistent. Ports 80/443 gehoeren VoxDrop und bleiben unberuehrt.
+
+Das Vercel-Frontend (https://real-estate-tool-pi.vercel.app, Basic-Auth) ruft die API
+same-origin unter `/backend-api/*` auf; ein Next.js-Rewrite (`BACKEND_PROXY_TARGET`)
+proxyt serverseitig zum Hetzner-Backend. Vercel-Envs: `NEXT_PUBLIC_API_BASE_URL=/backend-api`,
+`NEXT_PUBLIC_API_KEY`, `BACKEND_PROXY_TARGET`, `SITE_PASSWORD`.
+
+Deploy-Update: lokal aendern, testen, dann `rsync` nach `/opt/immo-tool` und
+`docker compose -f docker-compose.prod.yml up -d --build`. Der Poller-Status liegt im
+Volume `poller-state`; Logs: `docker logs immo-tool-poller-1`.
+
 ## Automatischer Listing-Import (E-Mail-Poller)
 
 Suchagenten-Mails (ImmoScout/Immowelt/Kleinanzeigen) landen per Gmail-Filter im Label
