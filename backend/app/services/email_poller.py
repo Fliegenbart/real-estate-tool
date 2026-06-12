@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import email
 import imaplib
+import json
 import os
 from email.message import Message
 from pathlib import Path
@@ -96,29 +97,65 @@ def import_mail_content(api_base: str, content: str, source: str) -> tuple[bool,
     return False, f"API-Fehler {response.status_code}"
 
 
+class ProcessedStore:
+    """Remembers processed Message-IDs in a JSON file so the read/unread
+    state of the mailbox is irrelevant (mail clients like Airmail mark mails
+    read on sync)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._ids: set[str] = set()
+        if path.exists():
+            try:
+                self._ids = set(json.loads(path.read_text()))
+            except (json.JSONDecodeError, TypeError):
+                self._ids = set()
+
+    def is_processed(self, message_id: str) -> bool:
+        return message_id in self._ids
+
+    def mark_processed(self, message_id: str) -> None:
+        self._ids.add(message_id)
+        self.path.write_text(json.dumps(sorted(self._ids), indent=0))
+
+
 def poll_mailbox(
     host: str,
     user: str,
     password: str,
     folder: str,
     api_base: str,
+    store: ProcessedStore,
 ) -> dict:
-    stats = {"checked": 0, "imported": 0, "skipped": 0, "failed": 0}
+    stats = {"checked": 0, "imported": 0, "skipped": 0, "failed": 0, "already_done": 0}
     connection = imaplib.IMAP4_SSL(host)
     try:
         connection.login(user, password)
-        status, _ = connection.select(f'"{folder}"')
+        status, _ = connection.select(f'"{folder}"', readonly=True)
         if status != "OK":
             raise RuntimeError(
                 f"IMAP-Ordner '{folder}' nicht gefunden - existiert das Gmail-Label und ist IMAP aktiv?"
             )
-        status, data = connection.search(None, "UNSEEN")
+        status, data = connection.search(None, "ALL")
         if status != "OK":
             raise RuntimeError("IMAP-Suche fehlgeschlagen.")
-        message_ids = data[0].split()
-        for message_id in message_ids:
+        for sequence_id in data[0].split():
             stats["checked"] += 1
-            status, fetched = connection.fetch(message_id, "(BODY.PEEK[])")
+            status, header_data = connection.fetch(
+                sequence_id, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"
+            )
+            if status != "OK" or not header_data or header_data[0] is None:
+                stats["failed"] += 1
+                continue
+            header = email.message_from_bytes(header_data[0][1])
+            message_key = (header.get("Message-ID") or "").strip()
+            if not message_key:
+                message_key = f"{folder}-seq-{sequence_id.decode()}"
+            if store.is_processed(message_key):
+                stats["already_done"] += 1
+                continue
+
+            status, fetched = connection.fetch(sequence_id, "(BODY.PEEK[])")
             if status != "OK" or not fetched or fetched[0] is None:
                 stats["failed"] += 1
                 continue
@@ -128,7 +165,7 @@ def poll_mailbox(
             processed, detail = import_mail_content(api_base, body, source)
             subject = (message.get("Subject") or "")[:60]
             if processed:
-                connection.store(message_id, "+FLAGS", "\\Seen")
+                store.mark_processed(message_key)
                 if "neu" in detail:
                     stats["imported"] += 1
                 else:
@@ -157,10 +194,18 @@ def main() -> int:
         print("IMAP_USER / IMAP_PASSWORD fehlen (backend/.env). Abbruch.")
         return 1
 
-    stats = poll_mailbox(host, user, password, folder, api_base)
+    state_path = Path(
+        os.environ.get(
+            "POLLER_STATE_FILE",
+            str(Path(__file__).resolve().parents[2] / ".poller_seen.json"),
+        )
+    )
+    store = ProcessedStore(state_path)
+    stats = poll_mailbox(host, user, password, folder, api_base, store)
     print(
-        f"Fertig: {stats['checked']} Mails geprueft, {stats['imported']} mit Treffern, "
-        f"{stats['skipped']} ohne Listings, {stats['failed']} fuer Retry offen gelassen."
+        f"Fertig: {stats['checked']} Mails im Label, {stats['already_done']} bereits verarbeitet, "
+        f"{stats['imported']} mit Treffern importiert, {stats['skipped']} ohne Listings, "
+        f"{stats['failed']} fuer Retry offen gelassen."
     )
     return 0
 

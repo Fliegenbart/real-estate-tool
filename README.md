@@ -34,10 +34,12 @@ Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsa
 ## Automatischer Listing-Import (E-Mail-Poller)
 
 Suchagenten-Mails (ImmoScout/Immowelt/Kleinanzeigen) landen per Gmail-Filter im Label
-`immo-agent`. Der Poller (`app/services/email_poller.py`) liest ungelesene Mails per IMAP,
-schickt sie an `POST /api/listings/import/email` und markiert sie als gelesen.
-Mails ohne erkennbares Listing werden uebersprungen; bei API-Fehlern bleiben sie
-ungelesen und werden beim naechsten Lauf erneut versucht.
+`Immo-Agent` (IMAP-Ordnernamen sind case-sensitive!). Der Poller
+(`app/services/email_poller.py`) liest ALLE Mails des Labels per IMAP (readonly) und
+merkt sich verarbeitete Message-IDs in `backend/.poller_seen.json` - der
+Gelesen-Status ist egal, Mail-Clients wie Airmail duerfen die Mails also ruhig
+als gelesen syncen. Mails ohne erkennbares Listing werden einmalig uebersprungen;
+bei API-Fehlern bleiben sie unverarbeitet und werden beim naechsten Lauf erneut versucht.
 
 Setup (macOS):
 

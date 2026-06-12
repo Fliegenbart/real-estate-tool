@@ -1,6 +1,26 @@
 from email.message import EmailMessage
 
-from app.services.email_poller import detect_source, extract_body, load_env_file
+from app.services.email_poller import ProcessedStore, detect_source, extract_body, load_env_file
+
+
+def test_processed_store_persists_between_instances(tmp_path):
+    path = tmp_path / "seen.json"
+    store = ProcessedStore(path)
+    assert not store.is_processed("<mail-1@portal>")
+
+    store.mark_processed("<mail-1@portal>")
+    assert store.is_processed("<mail-1@portal>")
+
+    reloaded = ProcessedStore(path)
+    assert reloaded.is_processed("<mail-1@portal>")
+    assert not reloaded.is_processed("<mail-2@portal>")
+
+
+def test_processed_store_survives_corrupt_state_file(tmp_path):
+    path = tmp_path / "seen.json"
+    path.write_text("kein json {")
+    store = ProcessedStore(path)
+    assert not store.is_processed("<mail-1@portal>")
 
 
 def test_detect_source_maps_portal_domains():
