@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowUpRight, CheckCircle, FileSearch, Mail, RefreshCw, XCircle } from "lucide-react";
+import { ArrowUpRight, CheckCircle, Eraser, FileSearch, Mail, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { convertListing, getListings, importDemoListings, importEmailListings, updateListingStatus } from "../lib/api";
+import { clearDemoData, convertListing, getListings, importDemoListings, importEmailListings, updateListingStatus } from "../lib/api";
 import { filterListings, formatCurrency, formatNumber, formatPercent, grossYield, hasMissingCoreData } from "../lib/dealMetrics";
 import { Listing, ListingFilters } from "../lib/types";
 
@@ -78,10 +78,23 @@ export function ListingsView() {
             <Mail size={16} />
             E-Mail-Import
           </button>
-          <button className="button primary" onClick={seedDemo}>
-            <RefreshCw size={16} />
-            Demo laden
-          </button>
+          {listings.some((listing) => listing.source === "demo_seed") ? (
+            <button
+              className="button"
+              onClick={async () => {
+                await clearDemoData();
+                await load();
+              }}
+            >
+              <Eraser size={16} />
+              Demo entfernen
+            </button>
+          ) : (
+            <button className="button" onClick={seedDemo}>
+              <RefreshCw size={16} />
+              Demo laden
+            </button>
+          )}
         </div>
       </section>
 

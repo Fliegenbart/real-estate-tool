@@ -54,6 +54,10 @@ export async function importDemoListings(): Promise<void> {
   await request("/listings/import/demo", { method: "POST" });
 }
 
+export async function clearDemoData(): Promise<{ deleted_listings: number; deleted_deals: number }> {
+  return request<{ deleted_listings: number; deleted_deals: number }>("/demo-data", { method: "DELETE" });
+}
+
 export async function bootstrapDemoPortfolio(): Promise<void> {
   await importDemoListings();
   const listings = await request<Listing[]>("/listings");

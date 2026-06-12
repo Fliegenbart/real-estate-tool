@@ -331,6 +331,46 @@ def import_email_listings(payload: EmailImportRequest, db: Session = Depends(get
     return upsert_listing_rows(db, rows, payload.source)
 
 
+@app.delete("/api/demo-data")
+def clear_demo_data(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Remove demo seed listings and everything hanging off them - real data
+    stays untouched."""
+    listings = db.query(Listing).filter(Listing.source == "demo_seed").all()
+    listing_ids = [listing.id for listing in listings]
+    deals = (
+        db.query(Deal).filter(Deal.listing_id.in_(listing_ids)).all() if listing_ids else []
+    )
+    for deal in deals:
+        for model in [
+            UnderwritingCase,
+            FinancingScenario,
+            TaxScenario,
+            LocationScore,
+            RiskFlag,
+            DealScore,
+            Document,
+            DealPipelineItem,
+            WegHealthRecord,
+            CapitalStackScenario,
+            GeoContext,
+        ]:
+            db.query(model).filter(model.deal_id == deal.id).delete(synchronize_session=False)
+        property_id = deal.property_id
+        db.delete(deal)
+        if property_id:
+            db.query(Unit).filter(Unit.property_id == property_id).delete(synchronize_session=False)
+            prop = db.get(Property, property_id)
+            if prop is not None:
+                db.delete(prop)
+    if listing_ids:
+        db.query(ListingPriceEvent).filter(ListingPriceEvent.listing_id.in_(listing_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Listing).filter(Listing.id.in_(listing_ids)).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted_listings": len(listing_ids), "deleted_deals": len(deals)}
+
+
 @app.post("/api/listings/import/demo", status_code=status.HTTP_201_CREATED)
 def import_demo_data(db: Session = Depends(get_db)) -> dict[str, Any]:
     clear_database(db)

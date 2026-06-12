@@ -125,3 +125,25 @@ def test_email_import_creates_listings_with_price_history():
     assert listing["purchase_price"] == 92000.0
     assert listing["price_reduction_count"] == 1
     assert listing["price_reduction_total_percent"] > 5
+
+
+def test_clear_demo_data_removes_only_demo_records():
+    deal_id = _prepare_deal()  # demo listing converted to a deal
+    mail = (
+        "Echte Wohnung zum Kauf\n"
+        "2 Zimmer | 50 m² | Kaufpreis: 85.000 €\n"
+        "09111 Chemnitz\n"
+        "https://www.immobilienscout24.de/expose/909090901\n"
+    )
+    client.post("/api/listings/import/email", json={"content": mail})
+
+    response = client.request("DELETE", "/api/demo-data")
+    assert response.status_code == 200
+    assert response.json()["deleted_listings"] >= 8
+    assert response.json()["deleted_deals"] >= 1
+
+    remaining = client.get("/api/listings").json()
+    assert all(listing["source"] != "demo_seed" for listing in remaining)
+    assert any(listing["external_id"] == "909090901" for listing in remaining)
+    assert client.get(f"/api/deals/{deal_id}").status_code == 404
+    assert client.get("/api/deals").json() == []
