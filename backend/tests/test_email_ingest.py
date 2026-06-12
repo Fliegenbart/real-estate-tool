@@ -58,3 +58,37 @@ def test_parses_html_mail_and_skips_blocks_without_price():
 
 def test_returns_empty_for_unrelated_mail():
     assert parse_alert_email("Hallo, wie besprochen melde ich mich naechste Woche.") == []
+
+
+def test_skips_rental_alert_and_search_criteria_blocks():
+    mail = """
+Ihr Suchauftrag: Mietwohnung, in Leipzig, bis 80.000 € Kaltmiete
+
+1 neues Angebot fuer Mietwohnung in Leipzig
+2 Zimmer | 60 m² | Kaltmiete: 650 €
+04177 Leipzig
+https://www.immobilienscout24.de/expose/111222333
+"""
+    assert parse_alert_email(mail) == []
+
+
+def test_skips_blocks_without_expose_url():
+    mail = """
+Tolle Wohnung als Kapitalanlage
+2 Zimmer | 54 m² | Kaufpreis: 119.000 €
+09126 Chemnitz
+"""
+    assert parse_alert_email(mail) == []
+
+
+def test_preserves_href_urls_when_stripping_html():
+    html = """
+    <div>Wohnung zum Kauf, Kapitalanlage<br>
+    58 m² | Kaufpreis: 98.000 €<br>
+    09112 Chemnitz<br>
+    <a href="https://www.immobilienscout24.de/expose/444555666">Zum Angebot</a></div>
+    """
+    rows = parse_alert_email(html)
+    assert len(rows) == 1
+    assert rows[0]["external_id"] == "444555666"
+    assert "expose/444555666" in rows[0]["listing_url"]

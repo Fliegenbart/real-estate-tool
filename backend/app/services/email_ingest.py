@@ -28,6 +28,8 @@ def _to_decimal(raw: str) -> Optional[Decimal]:
 
 def _strip_html(content: str) -> str:
     content = re.sub(r"(?is)<(script|style).*?</\1>", " ", content)
+    # Keep link targets: portal alert mails carry the expose URL only in href.
+    content = re.sub(r"(?i)<a\s+[^>]*href=[\"']([^\"']+)[\"'][^>]*>", r" \1 ", content)
     content = re.sub(r"(?i)<br\s*/?>", "\n", content)
     content = re.sub(r"(?i)</(p|div|tr|li|h[1-6])>", "\n", content)
     return TAG_RE.sub(" ", content)
@@ -58,12 +60,27 @@ def parse_alert_email(content: str, source: str = "email_alert") -> list[dict[st
 
     listings: list[dict[str, Any]] = []
     for block in blocks:
-        text = "\n".join(block)
-        price_match = PRICE_RE.search(text)
-        if not price_match:
+        # Drop search-agent meta lines ("Ihr Suchauftrag ... bis 80.000 €")
+        # so their price limits and titles never leak into a listing.
+        block = [
+            line
+            for line in block
+            if "suchauftrag" not in line.lower() and "suchkriterien" not in line.lower()
+        ]
+        if not block:
             continue
-        price = _to_decimal(price_match.group(1))
+        text = "\n".join(block)
+        lowered = text.lower()
+        # Rental hits are not purchase listings.
+        if "mietwohnung" in lowered and "kauf" not in lowered:
+            continue
+        price = _find_purchase_price(text)
         if price is None or price < Decimal("10000"):
+            continue
+        url_match = URL_RE.search(text)
+        if url_match is None:
+            # Every real alert hit links to its expose; blocks without a URL
+            # are boilerplate around the listings.
             continue
 
         listing: dict[str, Any] = {
@@ -92,13 +109,23 @@ def parse_alert_email(content: str, source: str = "email_alert") -> list[dict[st
             if rent and rent < Decimal("10000"):
                 listing["cold_rent_monthly"] = rent
                 listing["is_rented"] = True
-        url_match = URL_RE.search(text)
-        if url_match:
-            url = url_match.group(0)
-            listing["listing_url"] = url[:500]
-            listing["external_id"] = _external_id_from_url(url)
+        url = url_match.group(0)
+        listing["listing_url"] = url[:500]
+        listing["external_id"] = _external_id_from_url(url)
         listings.append(listing)
     return listings
+
+
+def _find_purchase_price(text: str) -> Optional[Decimal]:
+    """First price that is not a search criterion like 'bis 80.000 €'."""
+    for match in PRICE_RE.finditer(text):
+        prefix = text[max(0, match.start() - 8) : match.start()].lower()
+        if "bis" in prefix or "max" in prefix:
+            continue
+        value = _to_decimal(match.group(1))
+        if value is not None:
+            return value
+    return None
 
 
 def _external_id_from_url(url: str) -> Optional[str]:

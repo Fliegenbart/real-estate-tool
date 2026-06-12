@@ -10,15 +10,21 @@ from typing import Optional
 
 import httpx
 
-# IMAP poller: reads unseen Suchagenten mails from a Gmail label and feeds
-# them into POST /api/listings/import/email. Runs via launchd/cron, see
+# IMAP poller: finds Suchagenten mails and feeds them into
+# POST /api/listings/import/email. Runs via launchd/cron, see
 # scripts/de.davidwegener.immo-poller.plist and the README.
+#
+# Default mode needs ZERO Gmail configuration: it searches the all-mail
+# folder server-side for portal senders. Setting IMAP_FOLDER switches to
+# label mode (process every mail in that folder) instead.
 #
 # Config via env vars (or backend/.env):
 #   IMAP_HOST      default imap.gmail.com
 #   IMAP_USER      e.g. davidwegenertext@gmail.com
 #   IMAP_PASSWORD  Google App-Passwort (NOT the account password)
-#   IMAP_FOLDER    default immo-agent (the Gmail label)
+#   IMAP_FOLDER    optional Gmail label; empty = sender search in all mail
+#   IMAP_SENDERS   optional comma-separated sender keywords
+#   IMAP_SINCE_DAYS default 90
 #   API_BASE_URL   default http://localhost:8000/api
 
 SOURCE_BY_DOMAIN = {
@@ -29,6 +35,10 @@ SOURCE_BY_DOMAIN = {
     "ebay-kleinanzeigen": "kleinanzeigen_alert",
     "immonet": "immonet_alert",
 }
+
+DEFAULT_SENDERS = ["immobilienscout24", "immowelt", "kleinanzeigen", "immonet"]
+
+IMAP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 def load_env_file(path: Path) -> None:
@@ -119,27 +129,68 @@ class ProcessedStore:
         self.path.write_text(json.dumps(sorted(self._ids), indent=0))
 
 
+def parse_all_mail_folder(list_lines: list[bytes]) -> Optional[str]:
+    """Find Gmail's all-mail folder via the \\All attribute - its display
+    name depends on the account language ('Alle Nachrichten' vs 'All Mail')."""
+    for raw in list_lines:
+        if raw is None:
+            continue
+        line = raw.decode("utf-8", errors="replace")
+        if "\\All" in line:
+            return line.rsplit(' "/" ', 1)[-1].strip().strip('"')
+    return None
+
+
+def imap_since_date(days_back: int) -> str:
+    from datetime import date, timedelta
+
+    target = date.today() - timedelta(days=days_back)
+    return f"{target.day:02d}-{IMAP_MONTHS[target.month - 1]}-{target.year}"
+
+
 def poll_mailbox(
     host: str,
     user: str,
     password: str,
-    folder: str,
     api_base: str,
     store: ProcessedStore,
+    folder: Optional[str] = None,
+    senders: Optional[list[str]] = None,
+    since_days: int = 90,
 ) -> dict:
     stats = {"checked": 0, "imported": 0, "skipped": 0, "failed": 0, "already_done": 0}
     connection = imaplib.IMAP4_SSL(host)
     try:
         connection.login(user, password)
-        status, _ = connection.select(f'"{folder}"', readonly=True)
-        if status != "OK":
-            raise RuntimeError(
-                f"IMAP-Ordner '{folder}' nicht gefunden - existiert das Gmail-Label und ist IMAP aktiv?"
-            )
-        status, data = connection.search(None, "ALL")
-        if status != "OK":
-            raise RuntimeError("IMAP-Suche fehlgeschlagen.")
-        for sequence_id in data[0].split():
+
+        if folder:
+            # Label mode: every mail in the folder counts.
+            status, _ = connection.select(f'"{folder}"', readonly=True)
+            if status != "OK":
+                raise RuntimeError(
+                    f"IMAP-Ordner '{folder}' nicht gefunden - existiert das Gmail-Label und ist IMAP aktiv?"
+                )
+            status, data = connection.search(None, "ALL")
+            if status != "OK":
+                raise RuntimeError("IMAP-Suche fehlgeschlagen.")
+            sequence_ids = data[0].split()
+        else:
+            # Sender mode: search the all-mail folder for portal senders,
+            # no Gmail filter/label needed.
+            status, list_data = connection.list()
+            all_mail = parse_all_mail_folder(list_data if status == "OK" else []) or "INBOX"
+            status, _ = connection.select(f'"{all_mail}"', readonly=True)
+            if status != "OK":
+                raise RuntimeError(f"IMAP-Ordner '{all_mail}' nicht auswaehlbar.")
+            since = imap_since_date(since_days)
+            collected: set[bytes] = set()
+            for sender in senders or DEFAULT_SENDERS:
+                status, data = connection.search(None, f'(FROM "{sender}" SINCE {since})')
+                if status == "OK" and data and data[0]:
+                    collected.update(data[0].split())
+            sequence_ids = sorted(collected, key=int)
+
+        for sequence_id in sequence_ids:
             stats["checked"] += 1
             status, header_data = connection.fetch(
                 sequence_id, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"
@@ -150,7 +201,7 @@ def poll_mailbox(
             header = email.message_from_bytes(header_data[0][1])
             message_key = (header.get("Message-ID") or "").strip()
             if not message_key:
-                message_key = f"{folder}-seq-{sequence_id.decode()}"
+                message_key = f"{folder or 'allmail'}-seq-{sequence_id.decode()}"
             if store.is_processed(message_key):
                 stats["already_done"] += 1
                 continue
@@ -187,7 +238,13 @@ def main() -> int:
     host = os.environ.get("IMAP_HOST", "imap.gmail.com")
     user = os.environ.get("IMAP_USER", "")
     password = os.environ.get("IMAP_PASSWORD", "")
-    folder = os.environ.get("IMAP_FOLDER", "immo-agent")
+    folder = os.environ.get("IMAP_FOLDER", "").strip() or None
+    senders = [
+        sender.strip()
+        for sender in os.environ.get("IMAP_SENDERS", "").split(",")
+        if sender.strip()
+    ] or None
+    since_days = int(os.environ.get("IMAP_SINCE_DAYS", "90"))
     api_base = os.environ.get("API_BASE_URL", "http://localhost:8000/api")
 
     if not user or not password:
@@ -201,7 +258,9 @@ def main() -> int:
         )
     )
     store = ProcessedStore(state_path)
-    stats = poll_mailbox(host, user, password, folder, api_base, store)
+    stats = poll_mailbox(
+        host, user, password, api_base, store, folder=folder, senders=senders, since_days=since_days
+    )
     print(
         f"Fertig: {stats['checked']} Mails im Label, {stats['already_done']} bereits verarbeitet, "
         f"{stats['imported']} mit Treffern importiert, {stats['skipped']} ohne Listings, "
