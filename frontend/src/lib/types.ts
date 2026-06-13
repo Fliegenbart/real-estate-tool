@@ -70,8 +70,12 @@ export type Underwriting = {
   annual_debt_service?: number | null;
   monthly_cashflow_before_tax?: number | null;
   monthly_cashflow_after_tax_approx?: number | null;
+  is_cashflow_positive_before_tax?: boolean;
+  is_cashflow_positive_after_tax?: boolean;
+  max_purchase_price_for_neutral_cashflow?: number | null;
   dscr?: number | null;
   loan_amount?: number | null;
+  financed_capex?: number | null;
   equity_required?: number | null;
   cash_on_cash_return_percent?: number | null;
   break_even_rent_monthly?: number | null;

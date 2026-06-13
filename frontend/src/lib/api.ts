@@ -107,6 +107,20 @@ export async function runScore(id: number): Promise<Deal> {
   return getDeal(id);
 }
 
+export type FinancingInput = {
+  interest_rate_percent?: number | string;
+  amortization_rate_percent?: number | string;
+  loan_to_value_percent?: number | string;
+  capex_financed_percent?: number | string;
+};
+
+export async function updateFinancing(id: number, payload: FinancingInput): Promise<Deal> {
+  await request(`/deals/${id}/financing`, { method: "PATCH", body: JSON.stringify(payload) });
+  await request(`/deals/${id}/underwrite`, { method: "POST" });
+  await request(`/deals/${id}/score`, { method: "POST" });
+  return getDeal(id);
+}
+
 export async function updatePipeline(id: number, stage: PipelineStage): Promise<Deal> {
   return request<Deal>(`/deals/${id}/pipeline`, {
     method: "PATCH",

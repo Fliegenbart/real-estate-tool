@@ -53,6 +53,49 @@ def test_underwriting_calculates_core_purchase_financing_and_return_metrics():
     assert result.simple_equity_multiple > Decimal("1.00")
 
 
+def _cashflow_case(capex_financed_percent: Decimal):
+    return calculate_underwriting(
+        UnderwritingInput(
+            purchase_price=Decimal("100000"),
+            living_area_sqm=Decimal("50"),
+            monthly_cold_rent=Decimal("600"),
+            vacancy_allowance_percent=Decimal("0"),
+            property_management_monthly=Decimal("0"),
+            maintenance_monthly=Decimal("0"),
+            non_recoverable_costs_monthly=Decimal("0"),
+            broker_fee_percent=Decimal("0"),
+            property_transfer_tax_percent=Decimal("0"),
+            notary_and_land_registry_percent=Decimal("0"),
+            expected_initial_capex=Decimal("20000"),
+            capex_financed_percent=capex_financed_percent,
+            financing_interest_rate_percent=Decimal("4"),
+            amortization_rate_percent=Decimal("2"),
+            loan_to_value_percent=Decimal("100"),
+        )
+    )
+
+
+def test_financing_renovation_via_loan_raises_debt_service_and_lowers_equity():
+    from_equity = _cashflow_case(Decimal("0"))
+    from_loan = _cashflow_case(Decimal("100"))
+
+    assert from_equity.loan_amount == Decimal("100000.00")
+    assert from_loan.loan_amount == Decimal("120000.00")
+    assert from_loan.financed_capex == Decimal("20000.00")
+
+    # Financing the 20k renovation adds 6% debt service = 1200/yr = 100/month.
+    assert from_equity.monthly_cashflow_before_tax == Decimal("100.00")
+    assert from_loan.monthly_cashflow_before_tax == Decimal("0.00")
+    # ...but frees 20k of equity.
+    assert from_equity.equity_required - from_loan.equity_required == Decimal("20000.00")
+    assert from_loan.is_cashflow_positive_before_tax is True
+
+
+def test_max_purchase_price_for_neutral_cashflow():
+    result = _cashflow_case(Decimal("100"))
+    assert result.max_purchase_price_for_neutral_cashflow == Decimal("100000.00")
+
+
 def test_underwriting_handles_all_equity_case_without_dscr_division_error():
     result = calculate_underwriting(
         UnderwritingInput(

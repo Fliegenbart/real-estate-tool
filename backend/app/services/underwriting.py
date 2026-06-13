@@ -70,6 +70,7 @@ class UnderwritingInput(BaseModel):
     property_transfer_tax_percent: Decimal = Decimal("6.5")
     notary_and_land_registry_percent: Decimal = Decimal("2.0")
     expected_initial_capex: Decimal = Decimal("0")
+    capex_financed_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     financing_interest_rate_percent: Decimal = Decimal("4.0")
     amortization_rate_percent: Decimal = Decimal("2.0")
     loan_to_value_percent: Decimal = Field(default=Decimal("75.0"), ge=0, le=100)
@@ -95,8 +96,12 @@ class UnderwritingResult(BaseModel):
     annual_debt_service: Decimal
     monthly_cashflow_before_tax: Decimal
     monthly_cashflow_after_tax_approx: Decimal
+    is_cashflow_positive_before_tax: bool
+    is_cashflow_positive_after_tax: bool
+    max_purchase_price_for_neutral_cashflow: Optional[Decimal]
     dscr: Optional[Decimal]
     loan_amount: Decimal
+    financed_capex: Decimal
     equity_required: Decimal
     cash_on_cash_return_percent: Decimal
     break_even_rent_monthly: Decimal
@@ -140,7 +145,12 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
     net_operating_income = annual_cold_rent - annual_non_recoverable - annual_maintenance - vacancy_cost - annual_management
     net_initial_yield = safe_div(net_operating_income, all_in_purchase_price) or Decimal("0")
 
-    loan_amount = data.purchase_price * data.loan_to_value_percent / Decimal("100")
+    # Bank loan on the purchase price, plus optionally a share of the renovation
+    # financed via the same loan (same conditions). The financed renovation
+    # raises the debt service and lowers the equity needed.
+    main_loan = data.purchase_price * data.loan_to_value_percent / Decimal("100")
+    financed_capex = data.expected_initial_capex * data.capex_financed_percent / Decimal("100")
+    loan_amount = main_loan + financed_capex
     equity_required = all_in_purchase_price - loan_amount
     annual_interest = loan_amount * data.financing_interest_rate_percent / Decimal("100")
     annual_amortization = loan_amount * data.amortization_rate_percent / Decimal("100")
@@ -174,6 +184,18 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
     annual_operating_expenses = annual_non_recoverable + annual_maintenance + vacancy_cost + annual_management
     break_even_rent_monthly = (annual_operating_expenses + annual_debt_service) / Decimal("12")
     rent_factor = safe_div(data.purchase_price, annual_cold_rent) or Decimal("0")
+
+    # Highest purchase price that still leaves cashflow before tax >= 0.
+    # Debt service is linear in the price (loan = price*LTV + financed capex),
+    # so we can solve for it directly. The financed-capex service is fixed.
+    debt_rate = (data.financing_interest_rate_percent + data.amortization_rate_percent) / Decimal("100")
+    loan_to_value = data.loan_to_value_percent / Decimal("100")
+    if loan_to_value > 0 and debt_rate > 0:
+        financed_capex_service = financed_capex * debt_rate
+        max_price_neutral_cf = (net_operating_income - financed_capex_service) / (loan_to_value * debt_rate)
+        max_price_neutral_cf = max(max_price_neutral_cf, Decimal("0"))
+    else:
+        max_price_neutral_cf = None
 
     target_yield = data.target_net_yield_percent / Decimal("100")
     if target_yield > 0:
@@ -259,8 +281,14 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
         annual_debt_service=money(annual_debt_service),
         monthly_cashflow_before_tax=money(cashflow_before_tax / Decimal("12")),
         monthly_cashflow_after_tax_approx=money(cashflow_after_tax / Decimal("12")),
+        is_cashflow_positive_before_tax=cashflow_before_tax >= 0,
+        is_cashflow_positive_after_tax=cashflow_after_tax >= 0,
+        max_purchase_price_for_neutral_cashflow=money(max_price_neutral_cf)
+        if max_price_neutral_cf is not None
+        else None,
         dscr=percent(dscr_value) if dscr_value is not None else None,
         loan_amount=money(loan_amount),
+        financed_capex=money(financed_capex),
         equity_required=money(equity_required),
         cash_on_cash_return_percent=percent(cash_on_cash * Decimal("100")),
         break_even_rent_monthly=money(break_even_rent_monthly),
@@ -298,6 +326,8 @@ def calculate_underwriting(data: UnderwritingInput) -> UnderwritingResult:
             "annual_debt_service": "loan_amount * (interest_rate + amortization_rate)",
             "dscr": "net_operating_income / annual_debt_service",
             "maximum_purchase_price_for_target_yield": "target NOI price adjusted down for capex and acquisition cost percentages",
+            "max_purchase_price_for_neutral_cashflow": "price where NOI equals debt service; below it the monthly cashflow before tax is positive",
+            "loan_amount": "purchase_price * loan_to_value + financed share of renovation capex",
             "tax": "simplified GmbH tax on positive taxable income after interest and AfA assumptions",
             "residual_debt_factor": "remaining loan at end of interest fixation / monthly cold rent (target <= 150, amber <= 170)",
         },

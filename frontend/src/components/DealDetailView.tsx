@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, FileText, Handshake, Landmark, MapPin, PlayCircle, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, FileText, Handshake, Landmark, MapPin, PlayCircle, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getDeal, runScore, runUnderwriting } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
 import { Deal } from "../lib/types";
+import { FinancingPanel } from "./FinancingPanel";
 import { GeoContextPanel } from "./GeoContextPanel";
 import { RiskMatrixPanel } from "./RiskMatrixPanel";
 import { WegHealthPanel } from "./WegHealthPanel";
@@ -81,7 +82,27 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         </div>
       </section>
 
+      {uw && (
+        <section className={`cashflow-banner ${uw.is_cashflow_positive_before_tax ? "positive" : "negative"}`}>
+          <div className="cashflow-headline">
+            {uw.is_cashflow_positive_before_tax ? <TrendingUp size={22} /> : <TrendingDown size={22} />}
+            <div>
+              <span>Monatlicher Cashflow vor Steuer</span>
+              <strong>{formatCurrency(uw.monthly_cashflow_before_tax)}</strong>
+            </div>
+          </div>
+          <div className="cashflow-facts">
+            <Fact label="Nach Steuer (ca.)" value={formatCurrency(uw.monthly_cashflow_after_tax_approx)} />
+            <Fact label="Max. Kaufpreis fuer Cashflow >= 0" value={formatCurrency(uw.max_purchase_price_for_neutral_cashflow)} />
+            <Fact label="Eigenkapital" value={formatCurrency(uw.equity_required)} />
+            <Fact label="davon Reno finanziert" value={formatCurrency(uw.financed_capex)} />
+          </div>
+        </section>
+      )}
+
       <section className="deal-grid">
+        <FinancingPanel deal={deal} onSaved={setDeal} />
+
         <div className="panel">
           <div className="panel-header">
             <h2>Objekt & Kauf</h2>

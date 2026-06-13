@@ -181,6 +181,7 @@ class FinancingUpdate(BaseModel):
     interest_rate_percent: Optional[Decimal] = None
     amortization_rate_percent: Optional[Decimal] = None
     loan_to_value_percent: Optional[Decimal] = None
+    capex_financed_percent: Optional[Decimal] = None
     equity_contribution: Optional[Decimal] = None
 
 
@@ -1231,6 +1232,7 @@ def build_underwriting_input(deal: Deal) -> UnderwritingInput:
         property_transfer_tax_percent=listing.property_transfer_tax_percent or Decimal("6.5"),
         notary_and_land_registry_percent=listing.notary_and_land_registry_percent or Decimal("2.0"),
         expected_initial_capex=listing.expected_initial_capex or Decimal("0"),
+        capex_financed_percent=financing.capex_financed_percent or Decimal("0"),
         financing_interest_rate_percent=financing.interest_rate_percent,
         amortization_rate_percent=financing.amortization_rate_percent,
         loan_to_value_percent=financing.loan_to_value_percent,

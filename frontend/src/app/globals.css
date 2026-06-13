@@ -733,6 +733,64 @@ td {
   color: var(--watch);
 }
 
+.cashflow-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--good);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 18px 22px;
+}
+
+.cashflow-banner.negative {
+  border-left-color: var(--risk);
+}
+
+.cashflow-headline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cashflow-banner.positive .cashflow-headline {
+  color: var(--good);
+}
+
+.cashflow-banner.negative .cashflow-headline {
+  color: var(--risk);
+}
+
+.cashflow-headline span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cashflow-headline strong {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.cashflow-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  flex: 1 1 480px;
+}
+
+@media (max-width: 720px) {
+  .cashflow-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .add-listing-hint {
   color: var(--muted);
   margin: 0 0 12px;

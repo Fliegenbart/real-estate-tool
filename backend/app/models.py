@@ -253,6 +253,7 @@ class FinancingScenario(Base):
     interest_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("4.0"))
     amortization_rate_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("2.0"))
     loan_to_value_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("75.0"))
+    capex_financed_percent: Mapped[Decimal] = mapped_column(Percent, default=Decimal("0.0"))
     equity_contribution: Mapped[Optional[Decimal]] = mapped_column(Money, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
