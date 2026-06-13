@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { clearDemoData, convertListing, getListings, importDemoListings, importEmailListings, updateListingStatus } from "../lib/api";
 import { filterListings, formatCurrency, formatNumber, formatPercent, grossYield, hasMissingCoreData } from "../lib/dealMetrics";
 import { Listing, ListingFilters } from "../lib/types";
+import { AddListingPanel } from "./AddListingPanel";
 
 export function ListingsView() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -97,6 +98,8 @@ export function ListingsView() {
           )}
         </div>
       </section>
+
+      <AddListingPanel onCreated={load} />
 
       {showEmailImport && (
         <section className="panel">

@@ -1,6 +1,52 @@
 from decimal import Decimal
 
-from app.services.email_ingest import parse_alert_email
+from app.services.email_ingest import parse_alert_email, parse_single_expose
+
+
+def test_parse_single_expose_pulls_full_field_set():
+    expose = """
+    Charmante 3-Zimmer-Eigentumswohnung als Kapitalanlage
+    Kaufpreis: 149.000 €
+    Wohnflaeche: 72,5 m²
+    3 Zimmer
+    Baujahr: 1994
+    Energieeffizienzklasse D
+    Hausgeld: 245 €
+    Kaltmiete: 540 €
+    09130 Chemnitz, Sonnenberg
+    https://www.immobilienscout24.de/expose/151617181
+    """
+    draft = parse_single_expose(expose)
+
+    assert draft is not None
+    assert draft["purchase_price"] == Decimal("149000")
+    assert draft["living_area_sqm"] == Decimal("72.5")
+    assert draft["number_of_rooms"] == Decimal("3")
+    assert draft["construction_year"] == 1994
+    assert draft["energy_class"] == "D"
+    assert draft["house_money_monthly"] == Decimal("245")
+    assert draft["cold_rent_monthly"] == Decimal("540")
+    assert draft["is_rented"] is True
+    assert draft["city"] == "Chemnitz"
+    assert draft["postal_code"] == "09130"
+    assert draft["external_id"] == "151617181"
+
+
+def test_parse_single_expose_returns_none_without_price():
+    assert parse_single_expose("Schoene Wohnung, Besichtigung nach Absprache.") is None
+
+
+def test_parse_single_expose_handles_html_and_kaufpreis_priority():
+    html = """
+    <h1>2-Zimmer-Wohnung</h1>
+    <table><tr><td>Hausgeld</td><td>180 €</td></tr>
+    <tr><td>Kaufpreis</td><td>95.000 €</td></tr></table>
+    <p>54 m², 04315 Leipzig</p>
+    """
+    draft = parse_single_expose(html)
+    # Must pick the Kaufpreis, not the smaller Hausgeld figure.
+    assert draft["purchase_price"] == Decimal("95000")
+    assert draft["house_money_monthly"] == Decimal("180")
 
 
 SAMPLE_TEXT_MAIL = """

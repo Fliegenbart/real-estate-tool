@@ -733,6 +733,15 @@ td {
   color: var(--watch);
 }
 
+.add-listing-hint {
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.add-listing-grid {
+  margin: 14px 0;
+}
+
 .info-tip {
   position: relative;
   display: inline-flex;

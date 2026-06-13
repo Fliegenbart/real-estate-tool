@@ -34,7 +34,7 @@ from app.models import (
     WegHealthRecord,
 )
 from app.services.data_sources import DEFAULT_DATA_SOURCES
-from app.services.email_ingest import parse_alert_email
+from app.services.email_ingest import parse_alert_email, parse_single_expose
 from app.services.risk_engine import build_risk_matrix
 from app.services.signals import derive_signals
 from app.services.financing import (
@@ -246,6 +246,11 @@ class EmailImportRequest(BaseModel):
     source: str = "email_alert"
 
 
+class ExposeParseRequest(BaseModel):
+    content: str
+    source: str = "manual"
+
+
 class CapitalStackRequest(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -348,6 +353,18 @@ def import_listings(payload: ListingImportRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Import content or items are required.")
     rows = parse_import(payload.format, raw_payload)
     return upsert_listing_rows(db, rows, payload.source)
+
+
+@app.post("/api/listings/parse-expose")
+def parse_expose(payload: ExposeParseRequest) -> dict[str, Any]:
+    """Parse a pasted expose into a listing draft for review - does not save."""
+    draft = parse_single_expose(payload.content, source=payload.source)
+    if draft is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein Kaufpreis erkennbar. Bitte Kerndaten manuell ergaenzen.",
+        )
+    return json_safe(draft)
 
 
 @app.post("/api/listings/import/email", status_code=status.HTTP_201_CREATED)

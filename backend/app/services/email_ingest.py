@@ -116,6 +116,73 @@ def parse_alert_email(content: str, source: str = "email_alert") -> list[dict[st
     return listings
 
 
+ENERGY_CLASS_RE = re.compile(
+    r"(?:Energie\w*klasse|Effizienzklasse|Energieklasse)[:\s]*([A-H][+]?)", re.IGNORECASE
+)
+CONSTRUCTION_YEAR_RE = re.compile(r"Baujahr[:\s]*((?:1[89]|20)\d{2})", re.IGNORECASE)
+HOUSE_MONEY_RE = re.compile(r"(?:Hausgeld|Wohngeld)[:\s]*([\d.,]{1,10})\s*(?:€|EUR)", re.IGNORECASE)
+KAUFPREIS_RE = re.compile(r"Kaufpreis[:\s]*([\d.]{4,12}(?:,\d{2})?)\s*(?:€|EUR)", re.IGNORECASE)
+
+
+def parse_single_expose(content: str, source: str = "manual") -> Optional[dict[str, Any]]:
+    """Parse one pasted expose page (text or HTML) into a single listing draft.
+    Unlike the alert parser this treats the whole document as one object and
+    pulls extra fields (energy class, year, house money) that full exposes carry.
+    Returns None if no plausible purchase price is found."""
+    if "<" in content and ">" in content:
+        content = _strip_html(content)
+
+    kaufpreis = KAUFPREIS_RE.search(content)
+    price = _to_decimal(kaufpreis.group(1)) if kaufpreis else _find_purchase_price(content)
+    if price is None or price < Decimal("5000"):
+        return None
+
+    first_line = next((line.strip() for line in content.splitlines() if line.strip()), "Importiertes Angebot")
+    draft: dict[str, Any] = {
+        "source": source,
+        "title": first_line[:240],
+        "purchase_price": price,
+        "status": "active",
+    }
+
+    area = AREA_RE.search(content)
+    if area:
+        value = _to_decimal(area.group(1))
+        if value and Decimal("10") <= value <= Decimal("1000"):
+            draft["living_area_sqm"] = value
+    rooms = ROOMS_RE.search(content)
+    if rooms:
+        value = _to_decimal(rooms.group(1))
+        if value and value < Decimal("20"):
+            draft["number_of_rooms"] = value
+    location = POSTAL_CITY_RE.search(content)
+    if location:
+        draft["postal_code"] = location.group(1)
+        draft["city"] = location.group(2).strip().split(",")[0].strip()
+    rent = RENT_RE.search(content)
+    if rent:
+        value = _to_decimal(rent.group(1))
+        if value and value < Decimal("10000"):
+            draft["cold_rent_monthly"] = value
+            draft["is_rented"] = True
+    energy = ENERGY_CLASS_RE.search(content)
+    if energy:
+        draft["energy_class"] = energy.group(1).upper()
+    year = CONSTRUCTION_YEAR_RE.search(content)
+    if year:
+        draft["construction_year"] = int(year.group(1))
+    house_money = HOUSE_MONEY_RE.search(content)
+    if house_money:
+        value = _to_decimal(house_money.group(1))
+        if value and value < Decimal("5000"):
+            draft["house_money_monthly"] = value
+    url = URL_RE.search(content)
+    if url:
+        draft["listing_url"] = url.group(0)[:500]
+        draft["external_id"] = _external_id_from_url(url.group(0))
+    return draft
+
+
 def _find_purchase_price(text: str) -> Optional[Decimal]:
     """First price that is not a search criterion like 'bis 80.000 €'."""
     for match in PRICE_RE.finditer(text):

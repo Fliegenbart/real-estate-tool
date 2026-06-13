@@ -170,6 +170,20 @@ export async function importEmailListings(content: string): Promise<{ imported: 
   });
 }
 
+export async function parseExpose(content: string): Promise<Partial<Listing>> {
+  return request<Partial<Listing>>(`/listings/parse-expose`, {
+    method: "POST",
+    body: JSON.stringify({ content })
+  });
+}
+
+export async function createListing(payload: Partial<Listing>): Promise<Listing> {
+  return request<Listing>(`/listings`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function getRegions(): Promise<RegionPayload[]> {
   return request<RegionPayload[]>(`/regions`);
 }
