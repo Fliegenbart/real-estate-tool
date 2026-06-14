@@ -1,4 +1,7 @@
 import {
+  AcquisitionAssumptions,
+  AcquisitionCommandCenter,
+  BankPackage,
   CapitalStackResult,
   Dashboard,
   DataSource,
@@ -42,6 +45,15 @@ export async function getDashboard(): Promise<Dashboard> {
   } catch {
     return demoDashboard;
   }
+}
+
+export async function getAcquisitionCommandCenter(
+  assumptions: AcquisitionAssumptions
+): Promise<AcquisitionCommandCenter> {
+  return request<AcquisitionCommandCenter>("/acquisition/command-center", {
+    method: "POST",
+    body: JSON.stringify(assumptions)
+  });
 }
 
 export async function getListings(): Promise<Listing[]> {
@@ -134,6 +146,10 @@ export async function getInvestmentMemo(id: string | number): Promise<Investment
   } catch {
     return demoMemo;
   }
+}
+
+export async function getBankPackage(id: string | number): Promise<BankPackage> {
+  return request<BankPackage>(`/deals/${id}/bank-package`);
 }
 
 export async function updateWegHealth(id: number, input: WegHealthInput): Promise<WegHealthResult> {

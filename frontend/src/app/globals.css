@@ -733,6 +733,83 @@ td {
   color: var(--watch);
 }
 
+.decision-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.decision-chip.buy {
+  background: #e7f5ee;
+  color: var(--good);
+}
+
+.decision-chip.negotiate,
+.decision-chip.watch {
+  background: #fff6df;
+  color: var(--watch);
+}
+
+.decision-chip.reject {
+  background: #fff0ed;
+  color: var(--risk);
+}
+
+.acquisition-controls {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+}
+
+.growth-list {
+  display: grid;
+  gap: 8px;
+}
+
+.growth-row {
+  display: grid;
+  grid-template-columns: 70px 80px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.growth-row span,
+.growth-row small {
+  color: var(--muted);
+}
+
+.document-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bank-package-page .memo-document {
+  max-width: 1080px;
+}
+
+.bank-package-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.bank-package-title h2,
+.bank-package-title p {
+  margin: 0;
+}
+
+.bank-package-title p {
+  color: var(--muted);
+}
+
 .cashflow-banner {
   display: flex;
   flex-wrap: wrap;
@@ -872,7 +949,8 @@ th .info-tip-bubble {
   .metric-grid,
   .dashboard-grid,
   .deal-grid,
-  .kpi-strip {
+  .kpi-strip,
+  .acquisition-controls {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -901,7 +979,8 @@ th .info-tip-bubble {
   .risk-grid,
   .ladder-strip,
   .strategy-grid,
-  .weg-grid {
+  .weg-grid,
+  .acquisition-controls {
     grid-template-columns: 1fr;
   }
 }

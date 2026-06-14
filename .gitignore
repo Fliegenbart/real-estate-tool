@@ -12,3 +12,4 @@ __pycache__/
 *.sqlite
 .env
 .poller_seen.json
+backups/

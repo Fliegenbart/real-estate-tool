@@ -341,6 +341,102 @@ export type Dashboard = {
   pipeline: Record<PipelineStage, number>;
 };
 
+export type AcquisitionAssumptions = {
+  available_equity: number;
+  annual_new_equity: number;
+  target_years: number;
+  minimum_total_score: number;
+  minimum_dscr: number;
+  minimum_monthly_cashflow_before_tax: number;
+  maximum_equity_per_unit: number;
+};
+
+export type DealDecision = {
+  deal_id: number;
+  title: string;
+  city?: string | null;
+  pipeline_stage: PipelineStage | string;
+  decision: "buy" | "negotiate" | "watch" | "reject";
+  decision_label: string;
+  priority_score: number;
+  unit_count: number;
+  total_score?: number | null;
+  equity_required: number;
+  equity_per_unit: number;
+  loan_amount: number;
+  monthly_cashflow_before_tax: number;
+  stressed_monthly_cashflow_before_tax?: number | null;
+  dscr?: number | null;
+  stressed_dscr?: number | null;
+  residual_debt_factor_rating?: "green" | "amber" | "red" | null;
+  kfw_opportunity?: string | null;
+  constraints: string[];
+  next_action: string;
+};
+
+export type ListingOpportunity = {
+  id: number;
+  title: string;
+  city?: string | null;
+  source?: string | null;
+  purchase_price?: number | null;
+  gross_yield_percent?: number | null;
+  days_on_market?: number | null;
+  price_reduction_count: number;
+  price_reduction_total_percent?: number | null;
+  priority_score: number;
+  next_action: string;
+  signals: string[];
+};
+
+export type GrowthYear = {
+  year: number;
+  starting_units: number;
+  acquisition_equity_available: number;
+  estimated_units_added: number;
+  equity_used: number;
+  ending_units: number;
+  ending_equity: number;
+};
+
+export type AcquisitionCommandCenter = {
+  north_star: {
+    metric: string;
+    current_value: number;
+    explanation: string;
+  };
+  portfolio_capacity: {
+    available_equity: number;
+    deployable_equity_now: number;
+    remaining_equity_after_selected_deals: number;
+    bought_units: number;
+    active_pipeline_units: number;
+    selected_units_now: number;
+    average_equity_per_selected_unit: number;
+  };
+  selected_deals_now: DealDecision[];
+  deal_decisions: DealDecision[];
+  deal_radar: ListingOpportunity[];
+  growth_plan: {
+    target_years: number;
+    average_equity_per_unit_assumption: number;
+    years: GrowthYear[];
+    planning_warning: string;
+  };
+};
+
+export type BankPackage = {
+  deal_id: number;
+  title: string;
+  bank_summary: Record<string, number | string | null>;
+  financing_request: Record<string, number | string | null>;
+  strengths: string[];
+  risks: string[];
+  missing_documents: string[];
+  sections: Array<{ title: string; items: string[] }>;
+  disclaimer: string;
+};
+
 export type InvestmentMemo = {
   deal_id: number;
   title: string;

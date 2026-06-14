@@ -79,6 +79,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <FileText size={16} />
             Memo
           </Link>
+          <Link className="button" href={`/deals/${deal.id}/bank`}>
+            <Landmark size={16} />
+            Bank
+          </Link>
         </div>
       </section>
 

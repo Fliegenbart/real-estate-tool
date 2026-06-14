@@ -5,6 +5,8 @@ Professionelles MVP fuer eine deutsche vermoegensverwaltende GmbH, die Wohnungsa
 ## Module (Stand Juni 2026)
 
 - **Verhandlungsdossier** (`/deals/{id}/dossier`): Red Flags werden zu bezifferten Preisabschlaegen (Energieklasse-Sanierung, Capex, ueberhoehte nicht umlagefaehige Kosten, Mietpreisbremse-Deckel, Markt-Premium, WEG-Sonderumlagen), plus Preisleiter (Anker/Ziel/Walk-away), Gespraechsleitfaden und Verkaeufermotiv-Taktik.
+- **Kaufmaschine vvGmbH** (`/akquise`, API `/api/acquisition/command-center`): verbindet Deals, Scores, Eigenkapitalbedarf, DSCR, Cashflow, KfW-/BEG-Indikationen und Listing-Signale zu Buy/Nachverhandeln/Watch/Ablehnen. Rechnet die Nordstern-Kennzahl `Wohnungen je 100k Eigenkapital` und einen 10-Jahres-Wachstumsplan.
+- **Bankenpaket** (`/deals/{id}/bank`, API `/api/deals/{id}/bank-package`): bankfaehige Zusammenfassung mit Kaufpreis, All-in, Darlehenswunsch, Eigenkapitalbedarf, DSCR, Cashflow, Staerken/Risiken und fehlenden Bankunterlagen. Die Seite ist per Browser als PDF druckbar.
 - **WEG-Gesundheitsscore** (Deal-Detail): Ruecklage vs. Alters-Benchmark, Hausgeld-Kosten, Zahlungsmoral (Rueckstaende), Sanierungsstau/Sonderumlagen, Governance. Flags fliessen automatisch in das Deal-Scoring ein; fehlende Daten erzeugen eine Dokumenten-Anforderungsliste.
 - **Capital-Stack-Designer** (`/deals/{id}/finanzierung`): Tranchen aus Bankdarlehen, Gesellschafterdarlehen der operativen GmbH, Verkaeuferdarlehen und Eigenkapital. Rechnet DSCR, Cashflow, Mischzins, Finanzierungsluecke und das Netto-Steuerleck von Intercompany-Zinsen (~30% beim Darlehensgeber vs. ~15,8% Abzug in der vvGmbH) inkl. Fremdvergleichs-Checkliste.
 - **Chemnitz-Hebel** (`/finanzierung`): Vier Strategien fuer eine geschenkte, abbezahlte Wohnung (privat halten / an vvGmbH verkaufen mit AfA-Step-up / einlegen / als Zusatzsicherheit) mit Einmalkosten, Steuerlast, AfA-Schild, freigesetzter Liquiditaet und Steuerberater-Fragen je Variante.
@@ -49,6 +51,26 @@ proxyt serverseitig zum Hetzner-Backend. Vercel-Envs: `NEXT_PUBLIC_API_BASE_URL=
 Deploy-Update: lokal aendern, testen, dann `rsync` nach `/opt/immo-tool` und
 `docker compose -f docker-compose.prod.yml up -d --build`. Der Poller-Status liegt im
 Volume `poller-state`; Logs: `docker logs immo-tool-poller-1`.
+
+Produktions-Backup fuer die echte Postgres-Datenbank:
+
+```bash
+cd /opt/immo-tool
+BACKUP_DIR=/opt/immo-tool/backups/postgres ./scripts/backup_postgres.sh
+```
+
+Das Script erzeugt timestamped `pg_dump -Fc`-Backups, setzt `latest.dump` und loescht
+alte Dumps nach 30 Tagen (`RETENTION_DAYS=30`, ueberschreibbar). `backups/` ist bewusst
+in `.gitignore`, damit echte Daten nicht ins Repo geraten.
+
+Taeglichen Server-Lauf installieren:
+
+```bash
+cd /opt/immo-tool
+sudo ./scripts/install_postgres_backup_cron.sh
+```
+
+Default: taeglich um 03:17 Uhr Serverzeit, Log unter `/var/log/immo-postgres-backup.log`.
 
 ## Automatischer Listing-Import (E-Mail-Poller)
 
@@ -167,6 +189,8 @@ Steuer ist bewusst nur eine Naeherung. Die App zeigt und speichert die Warnung: 
 - `POST /api/deals/{id}/documents`
 - `PATCH /api/deals/{id}/pipeline`
 - `GET /api/deals/{id}/investment-memo`
+- `GET /api/deals/{id}/bank-package`
+- `POST /api/acquisition/command-center`
 - `PUT /api/deals/{id}/weg-health`
 - `GET /api/deals/{id}/negotiation-dossier`
 - `POST /api/deals/{id}/capital-stack`

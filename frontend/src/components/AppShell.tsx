@@ -9,13 +9,15 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListFilter,
-  ShieldAlert
+  ShieldAlert,
+  Target
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/akquise", label: "Kaufmaschine", icon: Target },
   { href: "/standorte", label: "Standorte", icon: Compass },
   { href: "/listings", label: "Listings", icon: ListFilter },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },

@@ -37,6 +37,11 @@ from app.services.data_sources import DEFAULT_DATA_SOURCES
 from app.services.email_ingest import parse_alert_email, parse_single_expose
 from app.services.risk_engine import build_risk_matrix
 from app.services.signals import derive_signals
+from app.services.acquisition import (
+    AcquisitionAssumptions,
+    build_bank_package,
+    build_command_center,
+)
 from app.services.financing import (
     CapitalStackInput,
     GiftPropertyInput,
@@ -974,6 +979,39 @@ def investment_memo(deal_id: int, db: Session = Depends(get_db)) -> dict[str, An
         build_risk_matrix(score.get("red_flags") or [], signal_types).model_dump()
     )
     return build_investment_memo(payload)
+
+
+@app.get("/api/deals/{deal_id}/bank-package")
+def bank_package(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    payload = deal_detail_payload(db, deal)
+    if payload.get("latest_underwriting") is None:
+        result = calculate_underwriting(build_underwriting_input(deal))
+        case = UnderwritingCase(
+            deal_id=deal.id,
+            name="Base case",
+            inputs=json_safe(build_underwriting_input(deal).model_dump()),
+            results=json_safe(result.model_dump()),
+        )
+        db.add(case)
+        db.commit()
+        payload = deal_detail_payload(db, deal)
+    if payload.get("latest_score") is None:
+        score_deal_endpoint(deal_id, db)
+        payload = deal_detail_payload(db, deal)
+    return json_safe(build_bank_package(payload).model_dump())
+
+
+@app.post("/api/acquisition/command-center")
+def acquisition_command_center(
+    assumptions: AcquisitionAssumptions,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    deals = db.query(Deal).order_by(Deal.created_at.desc(), Deal.id.desc()).all()
+    listings = db.query(Listing).order_by(Listing.first_seen_at.desc(), Listing.id.desc()).all()
+    deal_payloads = [deal_detail_payload(db, deal) for deal in deals]
+    listing_payloads = [listing_to_dict(listing) for listing in listings]
+    return build_command_center(deal_payloads, listing_payloads, assumptions)
 
 
 @app.get("/api/dashboard")
