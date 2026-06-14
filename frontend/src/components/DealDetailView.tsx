@@ -8,6 +8,7 @@ import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/d
 import { Deal } from "../lib/types";
 import { FinancingPanel } from "./FinancingPanel";
 import { GeoContextPanel } from "./GeoContextPanel";
+import { RenovationPlanPanel } from "./RenovationPlanPanel";
 import { RiskMatrixPanel } from "./RiskMatrixPanel";
 import { WegHealthPanel } from "./WegHealthPanel";
 
@@ -213,6 +214,8 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         </div>
 
         <GeoContextPanel deal={deal} onSaved={() => void load()} />
+
+        <RenovationPlanPanel deal={deal} />
 
         <div className="panel">
           <div className="panel-header">

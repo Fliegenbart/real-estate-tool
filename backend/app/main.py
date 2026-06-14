@@ -64,6 +64,7 @@ from app.services.region_import import (
 )
 from app.services.region_score import score_region
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
+from app.services.renovation import RenovationPlanInput, analyze_renovation_plan
 from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal
 from app.services.seed import DEMO_LISTINGS
 from app.services.tax_briefing import build_tax_briefing
@@ -294,6 +295,16 @@ class GeoContextUpdate(BaseModel):
     redevelopment_area: Optional[bool] = None
     monument_protection: Optional[bool] = None
     notes: Optional[str] = None
+
+
+class RenovationPlanRequest(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    planned_capex: Decimal
+    target_cold_rent_monthly: Decimal
+    valuation_yield_percent: Decimal = Decimal("4.5")
+    refinance_ltv_percent: Decimal = Decimal("75")
+    target_energy_class: Optional[str] = None
 
 
 @app.get("/api/health")
@@ -1000,6 +1011,46 @@ def bank_package(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         score_deal_endpoint(deal_id, db)
         payload = deal_detail_payload(db, deal)
     return json_safe(build_bank_package(payload).model_dump())
+
+
+@app.post("/api/deals/{deal_id}/renovation-plan")
+def renovation_plan(
+    deal_id: int,
+    payload: RenovationPlanRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    listing = deal.listing
+    if listing is None:
+        raise HTTPException(status_code=400, detail="Deal has no source listing.")
+    underwriting = latest(deal.underwriting_cases)
+    if underwriting is None:
+        result = calculate_underwriting(build_underwriting_input(deal))
+        case = UnderwritingCase(
+            deal_id=deal.id,
+            name="Base case",
+            inputs=json_safe(build_underwriting_input(deal).model_dump()),
+            results=json_safe(result.model_dump()),
+        )
+        db.add(case)
+        db.commit()
+        db.refresh(deal)
+        underwriting = latest(deal.underwriting_cases)
+    underwriting_results = underwriting.results if underwriting else {}
+    current_loan = to_decimal(underwriting_results.get("loan_amount")) or Decimal("0")
+    current_rent = listing.cold_rent_monthly or listing.market_rent_estimate_monthly or Decimal("0")
+    plan_input = RenovationPlanInput(
+        purchase_price=listing.purchase_price or deal.purchase_price or Decimal("0"),
+        current_cold_rent_monthly=current_rent,
+        current_loan_amount=current_loan,
+        planned_capex=payload.planned_capex,
+        target_cold_rent_monthly=payload.target_cold_rent_monthly,
+        valuation_yield_percent=payload.valuation_yield_percent,
+        refinance_ltv_percent=payload.refinance_ltv_percent,
+        current_energy_class=listing.energy_class,
+        target_energy_class=payload.target_energy_class,
+    )
+    return json_safe(analyze_renovation_plan(plan_input).model_dump())
 
 
 @app.post("/api/acquisition/command-center")

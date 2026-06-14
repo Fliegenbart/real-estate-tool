@@ -437,6 +437,32 @@ export type BankPackage = {
   disclaimer: string;
 };
 
+export type RenovationPlanInput = {
+  planned_capex: number | string;
+  target_cold_rent_monthly: number | string;
+  valuation_yield_percent?: number | string;
+  refinance_ltv_percent?: number | string;
+  target_energy_class?: string | null;
+};
+
+export type RenovationPlan = {
+  planned_capex: number;
+  current_cold_rent_monthly: number;
+  target_cold_rent_monthly: number;
+  annual_rent_uplift: number;
+  implied_value_uplift_from_rent: number;
+  post_renovation_value: number;
+  current_loan_amount: number;
+  refinanceable_debt_after_renovation: number;
+  potential_equity_released: number;
+  net_equity_still_bound_after_refinance: number;
+  simple_roi_percent: number;
+  value_add_multiple: number;
+  kfw_hint?: string | null;
+  recommendation: "strong_value_add" | "possible_value_add" | "weak_value_add";
+  warnings: string[];
+};
+
 export type InvestmentMemo = {
   deal_id: number;
   title: string;

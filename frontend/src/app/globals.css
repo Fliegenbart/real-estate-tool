@@ -764,6 +764,12 @@ td {
   grid-template-columns: repeat(6, minmax(130px, 1fr));
 }
 
+.renovation-controls {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  margin-bottom: 14px;
+}
+
 .growth-list {
   display: grid;
   gap: 8px;
@@ -950,7 +956,8 @@ th .info-tip-bubble {
   .dashboard-grid,
   .deal-grid,
   .kpi-strip,
-  .acquisition-controls {
+  .acquisition-controls,
+  .renovation-controls {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -980,7 +987,8 @@ th .info-tip-bubble {
   .ladder-strip,
   .strategy-grid,
   .weg-grid,
-  .acquisition-controls {
+  .acquisition-controls,
+  .renovation-controls {
     grid-template-columns: 1fr;
   }
 }

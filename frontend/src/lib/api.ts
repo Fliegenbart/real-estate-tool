@@ -13,6 +13,8 @@ import {
   NegotiationDossier,
   PipelineStage,
   RegionPayload,
+  RenovationPlan,
+  RenovationPlanInput,
   RiskMatrix,
   TaxBriefing,
   WegHealthInput,
@@ -150,6 +152,16 @@ export async function getInvestmentMemo(id: string | number): Promise<Investment
 
 export async function getBankPackage(id: string | number): Promise<BankPackage> {
   return request<BankPackage>(`/deals/${id}/bank-package`);
+}
+
+export async function analyzeRenovationPlan(
+  id: string | number,
+  payload: RenovationPlanInput
+): Promise<RenovationPlan> {
+  return request<RenovationPlan>(`/deals/${id}/renovation-plan`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function updateWegHealth(id: number, input: WegHealthInput): Promise<WegHealthResult> {
