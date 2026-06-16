@@ -488,12 +488,40 @@ td {
   font-size: 16px;
 }
 
+.fact small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .recommendation,
 .tax-warning {
   border-left: 3px solid var(--accent-2);
   color: #37413d;
   margin: 0 0 14px;
   padding-left: 12px;
+}
+
+.region-outlook-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+  gap: 18px;
+}
+
+.region-outlook-grid h3,
+.outlook-notes h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.outlook-metric-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.outlook-notes {
+  margin-top: 16px;
 }
 
 .risk-grid {
@@ -956,6 +984,7 @@ th .info-tip-bubble {
   .dashboard-grid,
   .deal-grid,
   .kpi-strip,
+  .region-outlook-grid,
   .acquisition-controls,
   .renovation-controls {
     grid-template-columns: 1fr 1fr;
@@ -984,6 +1013,8 @@ th .info-tip-bubble {
   .fact-grid,
   .kpi-strip,
   .risk-grid,
+  .region-outlook-grid,
+  .outlook-metric-list,
   .ladder-strip,
   .strategy-grid,
   .weg-grid,

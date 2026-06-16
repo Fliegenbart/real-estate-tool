@@ -17,6 +17,7 @@ class LocationMetricsInput(BaseModel):
     public_transport_score: int = 60
     employer_access_score: int = 60
     micro_location_score: int = 60
+    urban_environment_quality_score: Optional[int] = None
     noise_risk_score: int = 60
     flood_risk_score: int = 60
 
@@ -60,6 +61,224 @@ class DealScoreResult(BaseModel):
     next_recommended_action: str
 
 
+class RegionOutlookResult(BaseModel):
+    total_score: int
+    category_scores: dict[str, int]
+    thesis: str
+    positive_factors: list[str]
+    caution_factors: list[str]
+    key_metrics: list[dict[str, str | int]]
+    data_quality_notes: list[str]
+    next_recommended_action: str
+
+
+def score_region_outlook(location: LocationMetricsInput, source: str = "mock/manual") -> RegionOutlookResult:
+    values = normalized_location_values(location)
+    category_scores = {
+        "growth_and_demand": weighted_score(
+            values,
+            {
+                "population_trend_score": 0.35,
+                "vacancy_risk_score": 0.20,
+                "employer_access_score": 0.20,
+                "public_transport_score": 0.15,
+                "micro_location_score": 0.10,
+            },
+        ),
+        "jobs_and_income": weighted_score(
+            values,
+            {
+                "employer_access_score": 0.35,
+                "purchasing_power_score": 0.35,
+                "public_transport_score": 0.15,
+                "population_trend_score": 0.15,
+            },
+        ),
+        "housing_tightness": weighted_score(
+            values,
+            {
+                "vacancy_risk_score": 0.45,
+                "population_trend_score": 0.30,
+                "micro_location_score": 0.15,
+                "purchasing_power_score": 0.10,
+            },
+        ),
+        "connectivity_and_micro_location": weighted_score(
+            values,
+            {
+                "public_transport_score": 0.35,
+                "employer_access_score": 0.25,
+                "micro_location_score": 0.25,
+                "noise_risk_score": 0.15,
+            },
+        ),
+        "urban_environment_quality": weighted_score(
+            values,
+            {
+                "urban_environment_quality_score": 0.50,
+                "micro_location_score": 0.20,
+                "vacancy_risk_score": 0.15,
+                "noise_risk_score": 0.15,
+            },
+        ),
+        "risk_resilience": weighted_score(
+            values,
+            {
+                "flood_risk_score": 0.45,
+                "noise_risk_score": 0.25,
+                "micro_location_score": 0.15,
+                "vacancy_risk_score": 0.15,
+            },
+        ),
+    }
+    total_score = weighted_score(
+        category_scores,
+        {
+            "growth_and_demand": 0.30,
+            "jobs_and_income": 0.23,
+            "housing_tightness": 0.17,
+            "connectivity_and_micro_location": 0.15,
+            "urban_environment_quality": 0.10,
+            "risk_resilience": 0.05,
+        },
+    )
+
+    positive_factors: list[str] = []
+    caution_factors: list[str] = []
+    data_quality_notes: list[str] = []
+
+    if values["population_trend_score"] >= 75:
+        positive_factors.append("Population trend supports long-term housing demand.")
+    elif values["population_trend_score"] < 55:
+        caution_factors.append("Weak population trend can limit long-term demand.")
+
+    if values["employer_access_score"] >= 75 and values["public_transport_score"] >= 75:
+        positive_factors.append("Jobs access and transport connectivity support future demand.")
+    elif values["employer_access_score"] < 55:
+        caution_factors.append("Weak employer access reduces the regional growth case.")
+
+    if values["purchasing_power_score"] >= 75:
+        positive_factors.append("Purchasing power suggests households can absorb rent or price growth.")
+    elif values["purchasing_power_score"] < 55:
+        caution_factors.append("Weak purchasing power can cap rent and resale growth.")
+
+    if values["vacancy_risk_score"] >= 75:
+        positive_factors.append("Vacancy signal suggests housing demand is not only theoretical.")
+    elif values["vacancy_risk_score"] < 55:
+        caution_factors.append("Vacancy signal is weak and needs external validation.")
+
+    if values["micro_location_score"] >= 75:
+        positive_factors.append("Micro-location supports liquidity and exit optionality.")
+    elif values["micro_location_score"] < 55:
+        caution_factors.append("Micro-location is not yet strong enough for a growth premium.")
+
+    if values["urban_environment_quality_score"] >= 75:
+        positive_factors.append("Urban environment quality supports a stable, investable neighborhood thesis.")
+    elif values["urban_environment_quality_score"] < 55:
+        caution_factors.append("Urban environment quality is weak and should be validated before assuming neighborhood upside.")
+
+    if values["noise_risk_score"] < 55 or values["flood_risk_score"] < 55:
+        caution_factors.append("Noise or flood risk weakens the resilience of the location thesis.")
+
+    source_lower = source.lower()
+    if "mock" in source_lower or "manual" in source_lower:
+        data_quality_notes.append(
+            "Mock/manual location inputs: validate with official population, jobs, income, vacancy, construction, and risk data before bidding."
+        )
+    else:
+        data_quality_notes.append("Location inputs are treated as reviewed external or official data.")
+    data_quality_notes.append(
+        "Urban environment quality uses objective neighborhood signals only; nationality, ethnicity, religion, or origin are not used."
+    )
+
+    if total_score >= 75:
+        thesis = "Strong positive regional development setup."
+        next_action = "Prioritize in sourcing; validate official data before paying a growth premium."
+    elif total_score >= 65:
+        thesis = "Promising regional outlook with validation needed."
+        next_action = "Keep active; compare with nearby districts and verify the main demand indicators."
+    elif total_score >= 50:
+        thesis = "Mixed regional outlook."
+        next_action = "Use only with price discount or specific micro-location evidence."
+    else:
+        thesis = "Weak regional outlook."
+        next_action = "Do not pay for a growth story until external data improves."
+
+    key_metrics = [
+        {
+            "name": name,
+            "value": int(value),
+            "interpretation": metric_interpretation(name, int(value)),
+        }
+        for name, value in values.items()
+    ]
+
+    return RegionOutlookResult(
+        total_score=total_score,
+        category_scores=category_scores,
+        thesis=thesis,
+        positive_factors=positive_factors,
+        caution_factors=caution_factors,
+        key_metrics=key_metrics,
+        data_quality_notes=data_quality_notes,
+        next_recommended_action=next_action,
+    )
+
+
+def weighted_score(values: dict[str, int], weights: dict[str, float]) -> int:
+    weighted = sum(float(values[key]) * weight for key, weight in weights.items())
+    return clamp(weighted / sum(weights.values()))
+
+
+def normalized_location_values(location: LocationMetricsInput) -> dict[str, int]:
+    values = location.model_dump()
+    if values["urban_environment_quality_score"] is None:
+        values["urban_environment_quality_score"] = derive_urban_environment_quality_score(values)
+    return {key: int(value) for key, value in values.items() if value is not None}
+
+
+def derive_urban_environment_quality_score(values: dict[str, Optional[int]]) -> int:
+    return weighted_score(
+        {
+            "micro_location_score": int(values["micro_location_score"] or 60),
+            "vacancy_risk_score": int(values["vacancy_risk_score"] or 60),
+            "public_transport_score": int(values["public_transport_score"] or 60),
+            "noise_risk_score": int(values["noise_risk_score"] or 60),
+            "flood_risk_score": int(values["flood_risk_score"] or 60),
+        },
+        {
+            "micro_location_score": 0.35,
+            "vacancy_risk_score": 0.20,
+            "public_transport_score": 0.20,
+            "noise_risk_score": 0.15,
+            "flood_risk_score": 0.10,
+        },
+    )
+
+
+def metric_interpretation(name: str, value: int) -> str:
+    if value >= 75:
+        direction = "strong"
+    elif value >= 60:
+        direction = "solid"
+    elif value >= 50:
+        direction = "mixed"
+    else:
+        direction = "weak"
+    labels = {
+        "population_trend_score": "population and household demand",
+        "vacancy_risk_score": "vacancy and market tightness",
+        "purchasing_power_score": "income and affordability strength",
+        "public_transport_score": "transport connectivity",
+        "employer_access_score": "jobs access",
+        "micro_location_score": "street-level location quality",
+        "urban_environment_quality_score": "objective neighborhood quality",
+        "noise_risk_score": "noise resilience",
+        "flood_risk_score": "flood resilience",
+    }
+    return f"{direction} signal for {labels.get(name, name.replace('_', ' '))}"
+
+
 def score_deal(data: DealScoringInput, config: ScoreConfig = ScoreConfig()) -> DealScoreResult:
     red_flags = find_red_flags(data, config)
     positive_factors: list[str] = []
@@ -87,8 +306,8 @@ def score_deal(data: DealScoringInput, config: ScoreConfig = ScoreConfig()) -> D
     else:
         negative_factors.append("Market price benchmark is missing.")
 
-    loc_values = data.location.model_dump().values()
-    location_score = clamp(sum(loc_values) / len(data.location.model_dump()))
+    loc_values = normalized_location_values(data.location).values()
+    location_score = clamp(sum(loc_values) / len(loc_values))
     if location_score >= 75:
         positive_factors.append("Location metrics indicate solid demand and infrastructure.")
     elif location_score < 55:

@@ -4,13 +4,25 @@ import { AlertTriangle, CheckCircle, FileText, Handshake, Landmark, MapPin, Play
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getDeal, runScore, runUnderwriting } from "../lib/api";
-import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
+import { formatCurrency, formatNumber, formatPercent, regionOutlookHighlights, scoreTone } from "../lib/dealMetrics";
 import { Deal } from "../lib/types";
 import { FinancingPanel } from "./FinancingPanel";
 import { GeoContextPanel } from "./GeoContextPanel";
 import { RenovationPlanPanel } from "./RenovationPlanPanel";
 import { RiskMatrixPanel } from "./RiskMatrixPanel";
 import { WegHealthPanel } from "./WegHealthPanel";
+
+const regionMetricLabels: Record<string, string> = {
+  population_trend_score: "Bevoelkerung",
+  urban_environment_quality_score: "Umfeld",
+  employer_access_score: "Jobs",
+  purchasing_power_score: "Kaufkraft",
+  vacancy_risk_score: "Leerstand",
+  public_transport_score: "OePNV",
+  micro_location_score: "Mikrolage",
+  noise_risk_score: "Laerm",
+  flood_risk_score: "Hochwasser"
+};
 
 export function DealDetailView({ dealId }: { dealId: string }) {
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -45,6 +57,8 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const listing = deal.listing;
   const uw = deal.latest_underwriting;
   const scoreResult = deal.latest_score;
+  const regionOutlook = deal.region_outlook;
+  const regionMetrics = regionOutlookHighlights(regionOutlook);
   const redFlags = scoreResult?.red_flags || [];
   const targetRentPerSqm =
     typeof deal.rent_law?.legally_plausible_target_rent_per_sqm === "number"
@@ -155,6 +169,67 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <Fact label="Eigenkapital" value={formatCurrency(uw?.equity_required)} />
             <Fact label="Cash-on-Cash" value={formatPercent(uw?.cash_on_cash_return_percent)} />
           </div>
+        </div>
+
+        <div className="panel wide">
+          <div className="panel-header">
+            <h2>Regionen-Zukunft</h2>
+            <span className={`score ${scoreTone(regionOutlook?.total_score)}`}>{regionOutlook?.total_score ?? "-"}</span>
+          </div>
+          <p className="recommendation">{regionOutlook?.thesis || "Noch keine regionale Zukunftsthese."}</p>
+          {regionOutlook ? (
+            <>
+              <div className="region-outlook-grid">
+                <div>
+                  <h3>Wichtigste Signale</h3>
+                  <div className="outlook-metric-list">
+                    {regionMetrics.map((metric) => (
+                      <div className="fact" key={metric.name}>
+                        <span>{regionMetricLabels[metric.name] || metric.name.replaceAll("_", " ")}</span>
+                        <strong>{metric.value}</strong>
+                        <small>{metric.interpretation}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3>Kategorien</h3>
+                  <div className="score-bars">
+                    {Object.entries(regionOutlook.category_scores).map(([label, value]) => (
+                      <div className="pipeline-bar" key={label}>
+                        <span>{label.replaceAll("_", " ")}</span>
+                        <div className="bar-track"><div style={{ width: `${value}%` }} /></div>
+                        <strong>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="risk-grid outlook-notes">
+                <div>
+                  <h3>Positive These</h3>
+                  <ul className="plain-list">
+                    {(regionOutlook.positive_factors.length ? regionOutlook.positive_factors : ["Noch keine starken positiven Signale."]).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3>Vorsicht</h3>
+                  <ul className="plain-list">
+                    {[...regionOutlook.caution_factors, ...regionOutlook.data_quality_notes].map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <p className="tax-warning">{regionOutlook.next_recommended_action}</p>
+            </>
+          ) : (
+            <p className="tax-warning">Regionendaten fehlen noch.</p>
+          )}
         </div>
 
         <div className="panel wide">

@@ -5,6 +5,7 @@ from app.services.scoring import (
     LocationMetricsInput,
     ScoreConfig,
     score_deal,
+    score_region_outlook,
 )
 
 
@@ -85,3 +86,46 @@ def test_scoring_rewards_solid_explainable_deal():
     assert result.category_scores["location_and_demand"] >= 75
     assert result.positive_factors
     assert "Underwrite further" in result.next_recommended_action
+
+
+def test_region_outlook_includes_neutral_urban_environment_quality():
+    result = score_region_outlook(
+        LocationMetricsInput(
+            population_trend_score=84,
+            vacancy_risk_score=80,
+            purchasing_power_score=78,
+            public_transport_score=86,
+            employer_access_score=83,
+            micro_location_score=81,
+            urban_environment_quality_score=79,
+            noise_risk_score=70,
+            flood_risk_score=74,
+        ),
+        source="official/manual",
+    )
+
+    assert result.total_score >= 78
+    assert result.category_scores["urban_environment_quality"] >= 78
+    assert any("Urban environment" in factor for factor in result.positive_factors)
+    assert any(metric["name"] == "urban_environment_quality_score" for metric in result.key_metrics)
+    assert any("nationality" in note for note in result.data_quality_notes)
+
+
+def test_region_outlook_marks_weak_urban_environment_as_caution():
+    result = score_region_outlook(
+        LocationMetricsInput(
+            population_trend_score=42,
+            vacancy_risk_score=46,
+            purchasing_power_score=49,
+            public_transport_score=52,
+            employer_access_score=47,
+            micro_location_score=50,
+            urban_environment_quality_score=38,
+            noise_risk_score=44,
+            flood_risk_score=41,
+        )
+    )
+
+    assert result.total_score < 50
+    assert result.category_scores["urban_environment_quality"] < 45
+    assert any("Urban environment" in factor for factor in result.caution_factors)

@@ -309,6 +309,23 @@ export type DealScore = {
   next_recommended_action: string;
 };
 
+export type RegionOutlookMetric = {
+  name: string;
+  value: number;
+  interpretation: string;
+};
+
+export type RegionOutlook = {
+  total_score: number;
+  category_scores: Record<string, number>;
+  thesis: string;
+  positive_factors: string[];
+  caution_factors: string[];
+  key_metrics: RegionOutlookMetric[];
+  data_quality_notes: string[];
+  next_recommended_action: string;
+};
+
 export type Deal = {
   id: number;
   title: string;
@@ -327,6 +344,7 @@ export type Deal = {
   tax?: Record<string, number | string | boolean | null> | null;
   rent_law?: Record<string, number | string | boolean | string[] | null> | null;
   location?: Record<string, number | string | null> | null;
+  region_outlook?: RegionOutlook | null;
   risk_flags?: Array<Record<string, string | number | null>>;
   documents?: Array<Record<string, string | number | null>>;
 };

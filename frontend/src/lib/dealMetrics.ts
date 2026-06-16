@@ -1,4 +1,4 @@
-import { Deal, Listing, ListingFilters, PIPELINE_STAGES, PipelineStage } from "./types";
+import { Deal, Listing, ListingFilters, PIPELINE_STAGES, PipelineStage, RegionOutlook, RegionOutlookMetric } from "./types";
 
 export function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
@@ -90,4 +90,33 @@ export function scoreTone(score: number | null | undefined): "good" | "watch" | 
   if (score >= 75) return "good";
   if (score >= 60) return "watch";
   return "risk";
+}
+
+export function regionOutlookHighlights(outlook: RegionOutlook | null | undefined): RegionOutlookMetric[] {
+  if (!outlook) {
+    return [];
+  }
+  const priority = [
+    "population_trend_score",
+    "urban_environment_quality_score",
+    "employer_access_score",
+    "purchasing_power_score",
+    "vacancy_risk_score"
+  ];
+  return [...outlook.key_metrics]
+    .sort((a, b) => {
+      const aPriority = priority.indexOf(a.name);
+      const bPriority = priority.indexOf(b.name);
+      if (aPriority === -1 && bPriority === -1) {
+        return b.value - a.value;
+      }
+      if (aPriority === -1) {
+        return 1;
+      }
+      if (bPriority === -1) {
+        return -1;
+      }
+      return aPriority - bPriority;
+    })
+    .slice(0, 4);
 }

@@ -65,7 +65,7 @@ from app.services.region_import import (
 from app.services.region_score import score_region
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
 from app.services.renovation import RenovationPlanInput, analyze_renovation_plan
-from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal
+from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal, score_region_outlook
 from app.services.seed import DEMO_LISTINGS
 from app.services.tax_briefing import build_tax_briefing
 from app.services.underwriting import TaxAssumptions, UnderwritingInput, calculate_underwriting
@@ -491,7 +491,10 @@ def convert_listing_to_deal(listing_id: int, db: Session = Depends(get_db)) -> d
     db.add(FinancingScenario(deal_id=deal.id))
     db.add(TaxScenario(deal_id=deal.id))
     location = MockLocationEnrichmentService().enrich(listing.city, listing.postal_code)
-    location_score = LocationScore(deal_id=deal.id, **location.model_dump())
+    location_score = LocationScore(
+        deal_id=deal.id,
+        **location.model_dump(exclude={"urban_environment_quality_score"}),
+    )
     region = find_region_for_city(db, listing.city)
     if region is not None:
         region_result = score_region(region_metrics_dict(region), region.population)
@@ -1129,7 +1132,8 @@ def upsert_listing_rows(db: Session, rows: list[dict[str, Any]], source: str) ->
     created: list[int] = []
     updated: list[int] = []
     for row in rows:
-        row["source"] = row.get("source") or source
+        if row.get("source") in (None, "manual"):
+            row["source"] = source
         existing: Optional[Listing] = None
         if row.get("external_id"):
             existing = (
@@ -1239,6 +1243,7 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
         "tax": model_to_dict(tax) if tax else None,
         "rent_law": build_rent_law_payload(deal),
         "location": model_to_dict(location) if location else None,
+        "region_outlook": build_region_outlook_payload(location),
         "risk_flags": [model_to_dict(flag) for flag in deal.risk_flags],
         "documents": [model_to_dict(document) for document in deal.documents],
         "pipeline_history": [model_to_dict(item) for item in deal.pipeline_items],
@@ -1272,6 +1277,18 @@ def deal_region_summary(db: Session, deal: Deal) -> Optional[dict[str, Any]]:
         "red_flags": score.red_flags,
         "recommendation": score.recommendation,
     }
+
+
+def build_region_outlook_payload(location: Optional[LocationScore]) -> dict[str, Any]:
+    if location is None:
+        result = score_region_outlook(LocationMetricsInput())
+    else:
+        location_payload = model_to_dict(location)
+        result = score_region_outlook(
+            LocationMetricsInput(**location_payload),
+            source=str(location_payload.get("source") or "mock/manual"),
+        )
+    return json_safe(result.model_dump())
 
 
 def weg_health_payload(deal: Deal) -> Optional[dict[str, Any]]:

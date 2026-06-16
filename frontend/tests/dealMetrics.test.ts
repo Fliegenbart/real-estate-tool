@@ -4,7 +4,8 @@ import {
   filterListings,
   formatCurrency,
   groupDealsByStage,
-  rankDealsByScore
+  rankDealsByScore,
+  regionOutlookHighlights
 } from "../src/lib/dealMetrics";
 
 describe("dealMetrics frontend helpers", () => {
@@ -48,5 +49,33 @@ describe("dealMetrics frontend helpers", () => {
     expect(groupDealsByStage(deals).New).toHaveLength(1);
     expect(groupDealsByStage(deals).Rejected).toEqual([]);
     expect(rankDealsByScore(deals)[0].id).toBe(2);
+  });
+
+  it("selects neutral region outlook highlights with urban environment visible", () => {
+    const outlook = {
+      total_score: 79,
+      category_scores: {},
+      thesis: "Strong positive regional development setup.",
+      positive_factors: [],
+      caution_factors: [],
+      data_quality_notes: [],
+      next_recommended_action: "Prioritize in sourcing.",
+      key_metrics: [
+        { name: "flood_risk_score", value: 74, interpretation: "solid signal for flood resilience" },
+        { name: "urban_environment_quality_score", value: 81, interpretation: "strong signal for objective neighborhood quality" },
+        { name: "employer_access_score", value: 83, interpretation: "strong signal for jobs access" },
+        { name: "population_trend_score", value: 84, interpretation: "strong signal for population demand" },
+        { name: "purchasing_power_score", value: 78, interpretation: "strong signal for income strength" },
+        { name: "vacancy_risk_score", value: 80, interpretation: "strong signal for market tightness" }
+      ]
+    };
+
+    expect(regionOutlookHighlights(outlook).map((metric) => metric.name)).toEqual([
+      "population_trend_score",
+      "urban_environment_quality_score",
+      "employer_access_score",
+      "purchasing_power_score"
+    ]);
+    expect(regionOutlookHighlights(null)).toEqual([]);
   });
 });

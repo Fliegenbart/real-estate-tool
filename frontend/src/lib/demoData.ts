@@ -57,6 +57,57 @@ export const demoListings: Listing[] = [
   }
 ];
 
+const strongRegionOutlook = {
+  total_score: 82,
+  category_scores: {
+    growth_and_demand: 83,
+    jobs_and_income: 84,
+    housing_tightness: 79,
+    connectivity_and_micro_location: 81,
+    urban_environment_quality: 78,
+    risk_resilience: 76
+  },
+  thesis: "Positive regional development setup based on objective local signals.",
+  positive_factors: [
+    "Population trend supports long-term housing demand.",
+    "Jobs access and transport connectivity support future demand.",
+    "Objective neighborhood quality indicators are solid."
+  ],
+  caution_factors: ["Validate the local street-level condition before making an offer."],
+  key_metrics: [
+    { name: "population_trend_score", value: 84, interpretation: "strong signal for population and household demand" },
+    { name: "urban_environment_quality_score", value: 78, interpretation: "solid signal for objective neighborhood quality" },
+    { name: "employer_access_score", value: 86, interpretation: "strong signal for jobs access" },
+    { name: "purchasing_power_score", value: 82, interpretation: "strong signal for income and affordability strength" }
+  ],
+  data_quality_notes: ["Demo fallback values. Replace with verified local data for investment decisions."],
+  next_recommended_action: "Validate the region signals with current official city and neighborhood data."
+};
+
+const watchRegionOutlook = {
+  ...strongRegionOutlook,
+  total_score: 66,
+  category_scores: {
+    growth_and_demand: 72,
+    jobs_and_income: 76,
+    housing_tightness: 64,
+    connectivity_and_micro_location: 74,
+    urban_environment_quality: 58,
+    risk_resilience: 61
+  },
+  thesis: "Mixed regional setup: demand is present, but price and neighborhood checks matter.",
+  caution_factors: [
+    "Objective neighborhood quality needs a closer street-level review.",
+    "Price level leaves less margin for mistakes."
+  ],
+  key_metrics: [
+    { name: "population_trend_score", value: 72, interpretation: "solid signal for population and household demand" },
+    { name: "urban_environment_quality_score", value: 58, interpretation: "watch signal for objective neighborhood quality" },
+    { name: "employer_access_score", value: 76, interpretation: "solid signal for jobs access" },
+    { name: "purchasing_power_score", value: 75, interpretation: "solid signal for income and affordability strength" }
+  ]
+};
+
 export const demoDeals: Deal[] = [
   {
     id: 1,
@@ -91,7 +142,8 @@ export const demoDeals: Deal[] = [
       negative_factors: [],
       red_flags: [],
       next_recommended_action: "Underwrite further and request full WEG/rent/energy documents."
-    }
+    },
+    region_outlook: strongRegionOutlook
   },
   {
     id: 2,
@@ -121,7 +173,8 @@ export const demoDeals: Deal[] = [
       negative_factors: ["Base case cashflow is negative."],
       red_flags: ["negative_cashflow_base_case", "dscr_below_threshold"],
       next_recommended_action: "Reject or renegotiate materially before spending diligence budget."
-    }
+    },
+    region_outlook: watchRegionOutlook
   }
 ];
 
