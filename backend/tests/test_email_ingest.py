@@ -163,3 +163,30 @@ def test_parses_dense_immoscout_html_alert_with_search_price_before_listing_pric
     assert rows[0]["number_of_rooms"] == Decimal("2")
     assert rows[0]["city"] == "Leipzig"
     assert "INVEST" in rows[0]["title"]
+
+
+def test_dense_immoscout_parser_skips_rental_alert_prices_from_search_summary():
+    html = """
+    <html><body>
+    <a href="https://push.search.is24.de/email/expose/168502465?utm_content=expose_link">Ansehen</a>
+    Alltagstaugliche 2,5-Zimmer-Wohnung in Leipzig 465–515 € 58 m² 2,5 Zi.
+    Neustadt-Neuschönefeld, Leipzig Alle Angebote ansehen
+    Deine aktuelle Suche im Überblick: Mietwohnung, in Leipzig, bis 80.000 € Kaltmiete
+    </body></html>
+    """
+
+    assert parse_alert_email(html, source="immoscout_alert") == []
+
+
+def test_dense_immoscout_parser_skips_auf_anfrage_without_listing_price():
+    html = """
+    <html><body>
+    <a href="https://push.search.is24.de/email/expose/166094272?utm_content=expose_link">Ansehen</a>
+    Exklusive 5,5-Zimmer Wohnung mit 187 m² in Hamburg-Winterhude
+    Auf Anfrage 187 m² 5,5 Zi. Winterhude, Hamburg
+    Alle Angebote ansehen
+    Deine aktuelle Suche im Überblick: Eigentumswohnung, im Umkreis von 10 km von Eimsbüttel, bis 110.000 € Kaufpreis
+    </body></html>
+    """
+
+    assert parse_alert_email(html, source="immoscout_alert") == []

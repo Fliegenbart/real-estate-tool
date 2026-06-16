@@ -135,6 +135,12 @@ def parse_dense_immoscout_alert(content: str, source: str) -> list[dict[str, Any
         window = compact[match.end() : min(next_start, match.end() + 1400)]
         window = URL_RE.sub(" ", window)
         window = re.sub(r"\s+", " ", window).strip()
+        window = re.split(
+            r"\b(?:Alle Angebote|Passe deine gespeicherte Suche|Deine aktuelle Suche|Suchauftrag löschen)\b",
+            window,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip()
         price_match = next(
             (
                 candidate
