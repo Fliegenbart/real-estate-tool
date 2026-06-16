@@ -48,6 +48,10 @@ same-origin unter `/backend-api/*` auf; ein Next.js-Rewrite (`BACKEND_PROXY_TARG
 proxyt serverseitig zum Hetzner-Backend. Vercel-Envs: `NEXT_PUBLIC_API_BASE_URL=/backend-api`,
 `NEXT_PUBLIC_API_KEY`, `BACKEND_PROXY_TARGET`, `SITE_PASSWORD`.
 
+Gmail-Suchagenten laufen im Poller ueber IMAP. Fuer ein festes Gmail-Label wie
+`[Airmail]/Immo-Agent` muss auf dem Server in `/opt/immo-tool/.env` `IMAP_FOLDER`
+gesetzt sein; ohne `IMAP_FOLDER` sucht der Poller serverseitig nach Portal-Absendern.
+
 Deploy-Update: lokal aendern, testen, dann `rsync` nach `/opt/immo-tool` und
 `docker compose -f docker-compose.prod.yml up -d --build`. Der Poller-Status liegt im
 Volume `poller-state`; Logs: `docker logs immo-tool-poller-1`.

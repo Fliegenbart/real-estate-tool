@@ -1,4 +1,5 @@
 from email.message import EmailMessage
+from pathlib import Path
 
 from app.services import email_poller
 from app.services.email_poller import ProcessedStore, detect_source, extract_body, load_env_file, poll_mailbox
@@ -62,6 +63,13 @@ def test_load_env_file_does_not_override_existing_env(tmp_path, monkeypatch):
 
     assert os.environ["IMAP_USER"] == "umgebung@example.com"
     assert os.environ["IMAP_FOLDER"] == "immo-agent"
+
+
+def test_production_compose_passes_gmail_label_configuration_to_poller():
+    compose = (Path(__file__).resolve().parents[2] / "docker-compose.prod.yml").read_text()
+
+    assert "IMAP_FOLDER: ${IMAP_FOLDER:-}" in compose
+    assert "IMAP_SENDERS: ${IMAP_SENDERS:-}" in compose
 
 
 def test_poll_mailbox_reads_gmail_all_mail_and_imports_portal_alert(tmp_path, monkeypatch):

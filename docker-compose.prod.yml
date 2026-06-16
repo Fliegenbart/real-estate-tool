@@ -44,6 +44,8 @@ services:
       IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
       IMAP_USER: ${IMAP_USER}
       IMAP_PASSWORD: ${IMAP_PASSWORD}
+      IMAP_FOLDER: ${IMAP_FOLDER:-}
+      IMAP_SENDERS: ${IMAP_SENDERS:-}
       IMAP_SINCE_DAYS: ${IMAP_SINCE_DAYS:-30}
       POLLER_STATE_FILE: /data/poller_seen.json
     volumes:
