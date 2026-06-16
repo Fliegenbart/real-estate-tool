@@ -201,13 +201,33 @@ def infer_city_from_dense_alert(full_text: str, listing_window: str) -> Optional
         after_rooms = listing_window[room_match.end() : room_match.end() + 160]
         comma_city = re.search(r",\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .()-]{2,60})(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß .()-]+)?", after_rooms)
         if comma_city:
-            city = comma_city.group(1).strip()
-            if not any(word in city.lower() for word in ["immobilien", "finanzierung"]):
+            city = clean_dense_city(comma_city.group(1))
+            if city and not any(word in city.lower() for word in ["immobilien", "finanzierung"]):
                 return city
-    search_city = re.search(r"Eigentumswohnung,\s+(?:in|im Umkreis von \d+ km von)\s+([^,]+)", full_text, re.IGNORECASE)
+    search_city = re.search(
+        r"Eigentumswohnung,\s+(?:in|im Umkreis von \d+ km von)\s+(.{2,90}?)(?:\s+https?://|,\s|\s+\b(?:bis|Kaufpreis|Alle Angebote|Deine aktuelle Suche)\b|$)",
+        full_text,
+        re.IGNORECASE,
+    )
     if search_city:
-        return search_city.group(1).strip()
+        return clean_dense_city(search_city.group(1))
     return None
+
+
+def clean_dense_city(raw: str) -> Optional[str]:
+    city = URL_RE.sub(" ", raw)
+    city = re.split(
+        r"\b(?:Alle Angebote|Deine aktuelle Suche|Kaufpreis|Kaltmiete|Finanzierung)\b",
+        city,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    city = re.sub(r"\s+", " ", city).strip(" -|,")
+    if not city or len(city) > 80:
+        return None
+    if any(token in city.lower() for token in ["expose", "utm_", "pid=", "savedsearchid"]):
+        return None
+    return city
 
 
 ENERGY_CLASS_RE = re.compile(

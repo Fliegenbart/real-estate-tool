@@ -190,3 +190,24 @@ def test_dense_immoscout_parser_skips_auf_anfrage_without_listing_price():
     """
 
     assert parse_alert_email(html, source="immoscout_alert") == []
+
+
+def test_dense_immoscout_city_does_not_absorb_urls_or_next_listing_text():
+    html = """
+    <html><body>
+    Eigentumswohnung, im Umkreis von 120 km von Wandsbek - Volksdorf
+    <a href="https://push.search.is24.de/email/expose/168563823?PID=66620801&savedSearchId=200791707&utm_content=expose_link">Ansehen</a>
+    <a href="https://push.search.is24.de/email/expose/168563823?PID=66620801&savedSearchId=200791707&utm_content=expose_link">Bild</a>
+    Bremen - Kattenturm | Charmante Maisonette-Wohnung mit Balkon
+    229.000 € 82,87 m² 4 Zi. Wandsbek - Volksdorf
+    <a href="https://push.search.is24.de/email/expose/168563823?PID=66620801&savedSearchId=200791707&utm_content=expose_link">Zum Angebot</a>
+    Bremen - Kattenturm | Charmante Maisonette-Wohnung mit Balkon 229.000 € 82,87 m²
+    Alle Angebote ansehen
+    </body></html>
+    """
+
+    rows = parse_alert_email(html, source="immoscout_alert")
+
+    assert len(rows) == 1
+    assert rows[0]["external_id"] == "168563823"
+    assert rows[0]["city"] == "Wandsbek - Volksdorf"
