@@ -400,7 +400,9 @@ def clear_demo_data(db: Session = Depends(get_db)) -> dict[str, int]:
     deals = (
         db.query(Deal).filter(Deal.listing_id.in_(listing_ids)).all() if listing_ids else []
     )
-    for deal in deals:
+    deal_ids = [deal.id for deal in deals]
+    property_ids = [deal.property_id for deal in deals if deal.property_id is not None]
+    if deal_ids:
         for model in [
             UnderwritingCase,
             FinancingScenario,
@@ -414,14 +416,11 @@ def clear_demo_data(db: Session = Depends(get_db)) -> dict[str, int]:
             CapitalStackScenario,
             GeoContext,
         ]:
-            db.query(model).filter(model.deal_id == deal.id).delete(synchronize_session=False)
-        property_id = deal.property_id
-        db.delete(deal)
-        if property_id:
-            db.query(Unit).filter(Unit.property_id == property_id).delete(synchronize_session=False)
-            prop = db.get(Property, property_id)
-            if prop is not None:
-                db.delete(prop)
+            db.query(model).filter(model.deal_id.in_(deal_ids)).delete(synchronize_session=False)
+        db.query(Deal).filter(Deal.id.in_(deal_ids)).delete(synchronize_session=False)
+    if property_ids:
+        db.query(Unit).filter(Unit.property_id.in_(property_ids)).delete(synchronize_session=False)
+        db.query(Property).filter(Property.id.in_(property_ids)).delete(synchronize_session=False)
     if listing_ids:
         db.query(ListingPriceEvent).filter(ListingPriceEvent.listing_id.in_(listing_ids)).delete(
             synchronize_session=False

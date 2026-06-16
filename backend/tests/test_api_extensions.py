@@ -143,3 +143,46 @@ def test_clear_demo_data_leaves_real_email_imports_untouched_when_no_demo_record
     assert all(listing["source"] != "demo_seed" for listing in remaining)
     assert any(listing["external_id"] == "909090901" for listing in remaining)
     assert client.get(f"/api/deals/{deal_id}").status_code == 200
+
+
+def test_clear_demo_data_removes_legacy_demo_deals_without_touching_email_imports():
+    demo_import = client.post(
+        "/api/listings/import",
+        json={
+            "format": "json",
+            "source": "demo_seed",
+            "items": [
+                {
+                    "title": "Legacy demo listing",
+                    "city": "Leipzig",
+                    "postal_code": "04177",
+                    "purchase_price": "120000",
+                    "living_area_sqm": "55",
+                    "cold_rent_monthly": "650",
+                    "is_rented": True,
+                }
+            ],
+        },
+    )
+    assert demo_import.status_code == 201
+    demo_listing_id = demo_import.json()["ids"][0]
+    demo_deal = client.post(f"/api/listings/{demo_listing_id}/convert-to-deal").json()
+    client.post(f"/api/deals/{demo_deal['id']}/underwrite")
+
+    real_mail = (
+        "Echte Wohnung zum Kauf\n"
+        "2 Zimmer | 50 m² | Kaufpreis: 85.000 €\n"
+        "09111 Chemnitz\n"
+        "https://www.immobilienscout24.de/expose/909090902\n"
+    )
+    client.post("/api/listings/import/email", json={"content": real_mail})
+
+    response = client.request("DELETE", "/api/demo-data")
+
+    assert response.status_code == 200
+    assert response.json()["deleted_listings"] == 1
+    assert response.json()["deleted_deals"] == 1
+    remaining = client.get("/api/listings").json()
+    assert all(listing["source"] != "demo_seed" for listing in remaining)
+    assert any(listing["external_id"] == "909090902" for listing in remaining)
+    assert client.get(f"/api/deals/{demo_deal['id']}").status_code == 404
