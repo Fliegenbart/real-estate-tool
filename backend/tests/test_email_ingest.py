@@ -138,3 +138,28 @@ def test_preserves_href_urls_when_stripping_html():
     assert len(rows) == 1
     assert rows[0]["external_id"] == "444555666"
     assert "expose/444555666" in rows[0]["listing_url"]
+
+
+def test_parses_dense_immoscout_html_alert_with_search_price_before_listing_price():
+    html = """
+    <html><body>
+    <a href="https://push.search.is24.de/email/Suche/controller/executeSavedSearch/region?realestatetype=apartmentbuy&geocodes=/de/sachsen/leipzig&price=-120000.0&utm_content=search_link">
+    Eigentumswohnung, in Leipzig, bis 120.000 € Kaufpreis</a>
+    <a href="https://push.search.is24.de/email/expose/168629678?PID=66620801&savedSearchId=200774780&immoTypeId=2&utm_content=expose_link&referrer=ff_listing">Ansehen</a>
+    <a href="https://push.search.is24.de/email/expose/168629678?PID=66620801&savedSearchId=200774780&immoTypeId=2&utm_content=expose_link&referrer=ff_listing">Bild</a>
+    INVEST: 2-Zimmer in TOP-Lage Leipzig Gohlis *1700€/qm* + Außen-Stellplatz
+    105.000 € 61,73 m² 2 Zi. Gohlis-Mitte, Leipzig Lukas Lämmel Immobilien
+    <a href="https://www.immobilienscout24.de/baufinanzierung/finanzierungsangebote/?exposeId=168629678">Finanzierung</a>
+    </body></html>
+    """
+
+    rows = parse_alert_email(html, source="immoscout_alert")
+
+    assert len(rows) == 1
+    assert rows[0]["source"] == "immoscout_alert"
+    assert rows[0]["external_id"] == "168629678"
+    assert rows[0]["purchase_price"] == Decimal("105000")
+    assert rows[0]["living_area_sqm"] == Decimal("61.73")
+    assert rows[0]["number_of_rooms"] == Decimal("2")
+    assert rows[0]["city"] == "Leipzig"
+    assert "INVEST" in rows[0]["title"]

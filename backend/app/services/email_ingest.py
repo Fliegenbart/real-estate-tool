@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
@@ -10,11 +11,12 @@ from typing import Any, Optional
 
 PRICE_RE = re.compile(r"(?:Kaufpreis[:\s]*)?([\d.]{4,12}(?:,\d{2})?)\s*(?:€|EUR)", re.IGNORECASE)
 AREA_RE = re.compile(r"([\d.,]{1,8})\s*(?:m²|m2|qm)", re.IGNORECASE)
-ROOMS_RE = re.compile(r"([\d.,]{1,4})\s*Zimmer", re.IGNORECASE)
+ROOMS_RE = re.compile(r"([\d.,]{1,4})\s*(?:Zimmer|Zi\.)", re.IGNORECASE)
 POSTAL_CITY_RE = re.compile(r"\b(\d{5})\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß .()-]{2,60})")
 URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 TAG_RE = re.compile(r"<[^>]+>")
 RENT_RE = re.compile(r"(?:Kaltmiete|Miete)[:\s]*([\d.,]{1,10})\s*(?:€|EUR)", re.IGNORECASE)
+DENSE_IMMOSCOUT_EXPOSE_RE = re.compile(r"https?://push\.search\.is24\.de/email/expose/(\d+)[^\s\"'<>]*", re.IGNORECASE)
 
 
 def _to_decimal(raw: str) -> Optional[Decimal]:
@@ -32,12 +34,16 @@ def _strip_html(content: str) -> str:
     content = re.sub(r"(?i)<a\s+[^>]*href=[\"']([^\"']+)[\"'][^>]*>", r" \1 ", content)
     content = re.sub(r"(?i)<br\s*/?>", "\n", content)
     content = re.sub(r"(?i)</(p|div|tr|li|h[1-6])>", "\n", content)
-    return TAG_RE.sub(" ", content)
+    return html.unescape(TAG_RE.sub(" ", content))
 
 
 def parse_alert_email(content: str, source: str = "email_alert") -> list[dict[str, Any]]:
     if "<" in content and ">" in content:
         content = _strip_html(content)
+
+    dense_rows = parse_dense_immoscout_alert(content, source)
+    if dense_rows:
+        return dense_rows
 
     lines = [line.strip() for line in content.splitlines()]
     blocks: list[list[str]] = []
@@ -114,6 +120,88 @@ def parse_alert_email(content: str, source: str = "email_alert") -> list[dict[st
         listing["external_id"] = _external_id_from_url(url)
         listings.append(listing)
     return listings
+
+
+def parse_dense_immoscout_alert(content: str, source: str) -> list[dict[str, Any]]:
+    compact = re.sub(r"\s+", " ", content)
+    matches = list(DENSE_IMMOSCOUT_EXPOSE_RE.finditer(compact))
+    listings: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, match in enumerate(matches):
+        external_id = match.group(1)
+        if external_id in seen_ids:
+            continue
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(compact)
+        window = compact[match.end() : min(next_start, match.end() + 1400)]
+        window = URL_RE.sub(" ", window)
+        window = re.sub(r"\s+", " ", window).strip()
+        price_match = next(
+            (
+                candidate
+                for candidate in PRICE_RE.finditer(window)
+                if (_to_decimal(candidate.group(1)) or Decimal("0")) >= Decimal("10000")
+            ),
+            None,
+        )
+        if not price_match:
+            continue
+        price = _to_decimal(price_match.group(1))
+        if price is None:
+            continue
+        seen_ids.add(external_id)
+        before_price = window[: price_match.start()].strip(" -|")
+        title = clean_immoscout_title(before_price)
+        if not title:
+            title = "ImmoScout Angebot"
+        listing: dict[str, Any] = {
+            "source": source,
+            "external_id": external_id,
+            "title": title[:240],
+            "purchase_price": price,
+            "listing_url": match.group(0)[:500],
+            "status": "active",
+        }
+        area_match = AREA_RE.search(window[price_match.end() :])
+        if area_match:
+            area = _to_decimal(area_match.group(1))
+            if area and Decimal("10") <= area <= Decimal("1000"):
+                listing["living_area_sqm"] = area
+        rooms_match = ROOMS_RE.search(window[price_match.end() :])
+        if rooms_match:
+            rooms = _to_decimal(rooms_match.group(1))
+            if rooms and rooms < Decimal("20"):
+                listing["number_of_rooms"] = rooms
+        location_match = POSTAL_CITY_RE.search(window)
+        if location_match:
+            listing["postal_code"] = location_match.group(1)
+            listing["city"] = location_match.group(2).strip().split(",")[0].strip()
+        else:
+            city = infer_city_from_dense_alert(compact, window)
+            if city:
+                listing["city"] = city
+        listings.append(listing)
+    return listings
+
+
+def clean_immoscout_title(text: str) -> str:
+    text = re.sub(r"\b(?:Ansehen|Bild|Zum Expose|Expose|Neu|A|B)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" -|")
+    return text
+
+
+def infer_city_from_dense_alert(full_text: str, listing_window: str) -> Optional[str]:
+    room_match = ROOMS_RE.search(listing_window)
+    if room_match:
+        after_rooms = listing_window[room_match.end() : room_match.end() + 160]
+        comma_city = re.search(r",\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .()-]{2,60})(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß .()-]+)?", after_rooms)
+        if comma_city:
+            city = comma_city.group(1).strip()
+            if not any(word in city.lower() for word in ["immobilien", "finanzierung"]):
+                return city
+    search_city = re.search(r"Eigentumswohnung,\s+(?:in|im Umkreis von \d+ km von)\s+([^,]+)", full_text, re.IGNORECASE)
+    if search_city:
+        return search_city.group(1).strip()
+    return None
 
 
 ENERGY_CLASS_RE = re.compile(
