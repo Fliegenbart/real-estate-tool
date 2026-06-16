@@ -1,6 +1,7 @@
 "use client";
 
 import { Database, Info, RefreshCw } from "lucide-react";
+import type { FocusEvent, MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getRegion, getRegions, refreshOwnRegionMetrics, seedRegionDefaults } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, scoreTone } from "../lib/dealMetrics";
@@ -44,10 +45,32 @@ const CATEGORY_INFO: Record<string, { label: string; help: string }> = {
 };
 
 function InfoTip({ text }: { text: string }) {
+  const [position, setPosition] = useState<{ top: number; left: number; placement: "top" | "bottom" } | null>(null);
+
+  function show(event: FocusEvent<HTMLSpanElement> | MouseEvent<HTMLSpanElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(300, window.innerWidth - 24);
+    const left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.left + rect.width / 2 - width / 2));
+    const placement = rect.top > 170 ? "top" : "bottom";
+    const top = placement === "top" ? rect.top - 8 : rect.bottom + 8;
+    setPosition({ top, left, placement });
+  }
+
   return (
-    <span className="info-tip" tabIndex={0}>
+    <span
+      className="info-tip"
+      tabIndex={0}
+      onFocus={show}
+      onMouseEnter={show}
+      onBlur={() => setPosition(null)}
+      onMouseLeave={() => setPosition(null)}
+    >
       <Info size={13} />
-      <span className="info-tip-bubble">{text}</span>
+      {position && (
+        <span className="info-tip-bubble" data-placement={position.placement} style={{ top: position.top, left: position.left }}>
+          {text}
+        </span>
+      )}
     </span>
   );
 }
