@@ -1,14 +1,15 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import import_alert_listings
 
 
 def test_renovation_plan_quantifies_value_uplift_and_refinance_potential():
     client = TestClient(app)
-    client.post("/api/listings/import/demo")
+    listings = import_alert_listings(client)
     listing = next(
         item
-        for item in client.get("/api/listings").json()
+        for item in listings
         if "Leipzig" in item["title"]
     )
     deal = client.post(f"/api/listings/{listing['id']}/convert-to-deal").json()

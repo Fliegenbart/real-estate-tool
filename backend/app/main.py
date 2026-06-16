@@ -66,7 +66,6 @@ from app.services.region_score import score_region
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
 from app.services.renovation import RenovationPlanInput, analyze_renovation_plan
 from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal, score_region_outlook
-from app.services.seed import DEMO_LISTINGS
 from app.services.tax_briefing import build_tax_briefing
 from app.services.underwriting import TaxAssumptions, UnderwritingInput, calculate_underwriting
 from app.services.weg_health import WegHealthInput, assess_weg_health
@@ -430,20 +429,6 @@ def clear_demo_data(db: Session = Depends(get_db)) -> dict[str, int]:
         db.query(Listing).filter(Listing.id.in_(listing_ids)).delete(synchronize_session=False)
     db.commit()
     return {"deleted_listings": len(listing_ids), "deleted_deals": len(deals)}
-
-
-@app.post("/api/listings/import/demo", status_code=status.HTTP_201_CREATED)
-def import_demo_data(db: Session = Depends(get_db)) -> dict[str, Any]:
-    clear_database(db)
-    imported = []
-    for row in DEMO_LISTINGS:
-        listing = Listing(**row)
-        db.add(listing)
-        imported.append(listing)
-    db.commit()
-    for listing in imported:
-        db.refresh(listing)
-    return {"imported": len(imported), "ids": [listing.id for listing in imported]}
 
 
 @app.post("/api/listings/{listing_id}/convert-to-deal", status_code=status.HTTP_201_CREATED)

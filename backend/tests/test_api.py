@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import import_alert_listings
 
 
 def test_json_listing_import_endpoint_persists_normalized_listing():
@@ -70,16 +71,19 @@ def test_csv_listing_import_endpoint_persists_normalized_listing():
     assert listing["is_rented"] is True
 
 
-def test_demo_import_convert_underwrite_score_and_memo_flow():
+def test_demo_listing_import_endpoint_is_removed():
     client = TestClient(app)
 
-    import_response = client.post("/api/listings/import/demo")
-    assert import_response.status_code == 201
-    assert import_response.json()["imported"] >= 8
+    response = client.post("/api/listings/import/demo")
 
-    listings_response = client.get("/api/listings")
-    assert listings_response.status_code == 200
-    first_listing_id = listings_response.json()[0]["id"]
+    assert response.status_code == 404
+
+
+def test_email_import_convert_underwrite_score_and_memo_flow():
+    client = TestClient(app)
+
+    listings = import_alert_listings(client)
+    first_listing_id = listings[0]["id"]
 
     convert_response = client.post(f"/api/listings/{first_listing_id}/convert-to-deal")
     assert convert_response.status_code == 201

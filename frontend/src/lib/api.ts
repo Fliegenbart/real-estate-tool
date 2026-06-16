@@ -10,6 +10,7 @@ import {
   GiftPropertyComparison,
   InvestmentMemo,
   Listing,
+  PIPELINE_STAGES,
   NegotiationDossier,
   PipelineStage,
   RegionPayload,
@@ -20,7 +21,6 @@ import {
   WegHealthInput,
   WegHealthResult
 } from "./types";
-import { demoDashboard, demoDeals, demoListings, demoMemo } from "./demoData";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
@@ -45,7 +45,18 @@ export async function getDashboard(): Promise<Dashboard> {
   try {
     return await request<Dashboard>("/dashboard");
   } catch {
-    return demoDashboard;
+    return {
+      total_active_listings: 0,
+      active_deals: 0,
+      average_gross_yield: null,
+      average_net_yield: null,
+      red_flagged_deals: 0,
+      top_deals: [],
+      pipeline: PIPELINE_STAGES.reduce(
+        (acc, stage) => ({ ...acc, [stage]: 0 }),
+        {} as Dashboard["pipeline"]
+      )
+    };
   }
 }
 
@@ -62,26 +73,12 @@ export async function getListings(): Promise<Listing[]> {
   try {
     return await request<Listing[]>("/listings");
   } catch {
-    return demoListings;
+    return [];
   }
-}
-
-export async function importDemoListings(): Promise<void> {
-  await request("/listings/import/demo", { method: "POST" });
 }
 
 export async function clearDemoData(): Promise<{ deleted_listings: number; deleted_deals: number }> {
   return request<{ deleted_listings: number; deleted_deals: number }>("/demo-data", { method: "DELETE" });
-}
-
-export async function bootstrapDemoPortfolio(): Promise<void> {
-  await importDemoListings();
-  const listings = await request<Listing[]>("/listings");
-  for (const listing of listings) {
-    const deal = await convertListing(listing.id);
-    await request(`/deals/${deal.id}/underwrite`, { method: "POST" });
-    await request(`/deals/${deal.id}/score`, { method: "POST" });
-  }
 }
 
 export async function updateListingStatus(id: number, status: string): Promise<Listing> {
@@ -99,16 +96,12 @@ export async function getDeals(): Promise<Deal[]> {
   try {
     return await request<Deal[]>("/deals");
   } catch {
-    return demoDeals;
+    return [];
   }
 }
 
 export async function getDeal(id: string | number): Promise<Deal> {
-  try {
-    return await request<Deal>(`/deals/${id}`);
-  } catch {
-    return demoDeals.find((deal) => String(deal.id) === String(id)) || demoDeals[0];
-  }
+  return request<Deal>(`/deals/${id}`);
 }
 
 export async function runUnderwriting(id: number): Promise<Deal> {
@@ -143,11 +136,7 @@ export async function updatePipeline(id: number, stage: PipelineStage): Promise<
 }
 
 export async function getInvestmentMemo(id: string | number): Promise<InvestmentMemo> {
-  try {
-    return await request<InvestmentMemo>(`/deals/${id}/investment-memo`);
-  } catch {
-    return demoMemo;
-  }
+  return request<InvestmentMemo>(`/deals/${id}/investment-memo`);
 }
 
 export async function getBankPackage(id: string | number): Promise<BankPackage> {

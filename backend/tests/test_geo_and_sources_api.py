@@ -1,17 +1,14 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import import_alert_listings, prepare_deal
 
 
 client = TestClient(app)
 
 
 def _prepare_deal() -> int:
-    client.post("/api/listings/import/demo")
-    listing_id = client.get("/api/listings").json()[0]["id"]
-    deal = client.post(f"/api/listings/{listing_id}/convert-to-deal").json()
-    client.post(f"/api/deals/{deal['id']}/underwrite")
-    return deal["id"]
+    return prepare_deal(client)
 
 
 def test_data_source_registry_seed_and_crud():
@@ -77,7 +74,6 @@ def test_risk_matrix_endpoint_and_memo_sections():
 
 
 def test_listing_payload_contains_signals():
-    client.post("/api/listings/import/demo")
-    listing = client.get("/api/listings").json()[0]
+    listing = import_alert_listings(client)[0]
     assert "signals" in listing
     assert isinstance(listing["signals"], list)

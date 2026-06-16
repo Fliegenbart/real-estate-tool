@@ -123,7 +123,9 @@ Danach:
 
 - Frontend: http://localhost:3000
 - Backend API Docs: http://localhost:8000/docs
-- Demo-Daten in der UI ueber `Demo laden` oder per API: `POST /api/listings/import/demo`
+- Listings importieren: in der UI unter `Listings` per E-Mail-Import oder per API
+  `POST /api/listings/import/email`. Der Gmail-Poller liest Suchagenten-Mails per IMAP
+  und sendet sie an denselben Import-Endpunkt.
 
 ## Docker starten
 
@@ -175,7 +177,7 @@ Steuer ist bewusst nur eine Naeherung. Die App zeigt und speichert die Warnung: 
 - `GET /api/listings`
 - `POST /api/listings`
 - `POST /api/listings/import`
-- `POST /api/listings/import/demo`
+- `POST /api/listings/import/email`
 - `POST /api/listings/{id}/convert-to-deal`
 - `GET /api/deals`
 - `GET /api/deals/{id}`

@@ -1,6 +1,7 @@
 from email.message import EmailMessage
 
-from app.services.email_poller import ProcessedStore, detect_source, extract_body, load_env_file
+from app.services import email_poller
+from app.services.email_poller import ProcessedStore, detect_source, extract_body, load_env_file, poll_mailbox
 
 
 def test_processed_store_persists_between_instances(tmp_path):
@@ -61,3 +62,77 @@ def test_load_env_file_does_not_override_existing_env(tmp_path, monkeypatch):
 
     assert os.environ["IMAP_USER"] == "umgebung@example.com"
     assert os.environ["IMAP_FOLDER"] == "immo-agent"
+
+
+def test_poll_mailbox_reads_gmail_all_mail_and_imports_portal_alert(tmp_path, monkeypatch):
+    message = EmailMessage()
+    message["From"] = "ImmobilienScout24 <mailing@immobilienscout24.de>"
+    message["Subject"] = "Neue Kaufangebote"
+    message["Message-ID"] = "<gmail-alert-1@example.test>"
+    message.set_content(
+        "2-Zimmer-Wohnung\n"
+        "2 Zimmer | 58 m² | Kaufpreis: 98.000 €\n"
+        "09112 Chemnitz\n"
+        "https://www.immobilienscout24.de/expose/555111222\n"
+    )
+
+    class FakeGmail:
+        def __init__(self, host: str) -> None:
+            self.host = host
+            self.selected_folder = None
+            self.searches: list[str] = []
+
+        def login(self, user: str, password: str):
+            return "OK", []
+
+        def list(self):
+            return "OK", [b'(\\HasNoChildren \\All) "/" "[Gmail]/All Mail"']
+
+        def select(self, folder: str, readonly: bool = False):
+            self.selected_folder = folder
+            return "OK", []
+
+        def search(self, charset: None, criteria: str):
+            self.searches.append(criteria)
+            if 'FROM "immobilienscout24"' in criteria:
+                return "OK", [b"1"]
+            return "OK", [b""]
+
+        def fetch(self, sequence_id: bytes, query: str):
+            if "HEADER.FIELDS" in query:
+                header = b"Message-ID: <gmail-alert-1@example.test>\r\n\r\n"
+                return "OK", [(b"1", header)]
+            return "OK", [(b"1", message.as_bytes())]
+
+        def logout(self):
+            return "OK", []
+
+    fake_connections: list[FakeGmail] = []
+
+    def fake_imap(host: str) -> FakeGmail:
+        connection = FakeGmail(host)
+        fake_connections.append(connection)
+        return connection
+
+    imported: list[tuple[str, str, str]] = []
+
+    def fake_import(api_base: str, content: str, source: str) -> tuple[bool, str]:
+        imported.append((api_base, content, source))
+        return True, "1 neu, 0 aktualisiert"
+
+    monkeypatch.setattr(email_poller.imaplib, "IMAP4_SSL", fake_imap)
+    monkeypatch.setattr(email_poller, "import_mail_content", fake_import)
+
+    stats = poll_mailbox(
+        "imap.gmail.com",
+        "user@example.com",
+        "app-password",
+        "http://localhost:8000/api",
+        ProcessedStore(tmp_path / "seen.json"),
+    )
+
+    assert stats["checked"] == 1
+    assert stats["imported"] == 1
+    assert fake_connections[0].selected_folder == '"[Gmail]/All Mail"'
+    assert imported[0][2] == "immoscout_alert"
+    assert "98.000" in imported[0][1]

@@ -1,17 +1,14 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import prepare_deal
 
 
 client = TestClient(app)
 
 
 def _prepare_deal() -> int:
-    client.post("/api/listings/import/demo")
-    listing_id = client.get("/api/listings").json()[0]["id"]
-    deal = client.post(f"/api/listings/{listing_id}/convert-to-deal").json()
-    client.post(f"/api/deals/{deal['id']}/underwrite")
-    return deal["id"]
+    return prepare_deal(client)
 
 
 def test_underwriting_includes_schedule_and_stress_test():
@@ -127,8 +124,8 @@ def test_email_import_creates_listings_with_price_history():
     assert listing["price_reduction_total_percent"] > 5
 
 
-def test_clear_demo_data_removes_only_demo_records():
-    deal_id = _prepare_deal()  # demo listing converted to a deal
+def test_clear_demo_data_leaves_real_email_imports_untouched_when_no_demo_records_exist():
+    deal_id = _prepare_deal()
     mail = (
         "Echte Wohnung zum Kauf\n"
         "2 Zimmer | 50 m² | Kaufpreis: 85.000 €\n"
@@ -139,11 +136,10 @@ def test_clear_demo_data_removes_only_demo_records():
 
     response = client.request("DELETE", "/api/demo-data")
     assert response.status_code == 200
-    assert response.json()["deleted_listings"] >= 8
-    assert response.json()["deleted_deals"] >= 1
+    assert response.json()["deleted_listings"] == 0
+    assert response.json()["deleted_deals"] == 0
 
     remaining = client.get("/api/listings").json()
     assert all(listing["source"] != "demo_seed" for listing in remaining)
     assert any(listing["external_id"] == "909090901" for listing in remaining)
-    assert client.get(f"/api/deals/{deal_id}").status_code == 404
-    assert client.get("/api/deals").json() == []
+    assert client.get(f"/api/deals/{deal_id}").status_code == 200

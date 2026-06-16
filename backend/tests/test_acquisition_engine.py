@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import import_alert_listings
 
 
 def test_acquisition_command_center_prioritizes_equity_efficient_buy_box():
     client = TestClient(app)
-    client.post("/api/listings/import/demo")
-    listings = client.get("/api/listings").json()
+    listings = import_alert_listings(client)
 
     for listing in listings[:4]:
         deal = client.post(f"/api/listings/{listing['id']}/convert-to-deal").json()
@@ -49,8 +49,7 @@ def test_acquisition_command_center_prioritizes_equity_efficient_buy_box():
 
 def test_bank_package_collects_financing_memo_and_missing_documents():
     client = TestClient(app)
-    client.post("/api/listings/import/demo")
-    listing = client.get("/api/listings").json()[0]
+    listing = import_alert_listings(client)[0]
     deal = client.post(f"/api/listings/{listing['id']}/convert-to-deal").json()
     client.post(f"/api/deals/{deal['id']}/underwrite")
     client.post(f"/api/deals/{deal['id']}/score")

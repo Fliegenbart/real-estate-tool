@@ -1,16 +1,15 @@
 "use client";
 
-import { AlertTriangle, Building2, Euro, RefreshCw, TrendingUp } from "lucide-react";
+import { AlertTriangle, Building2, Euro, Mail, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { bootstrapDemoPortfolio, getDashboard } from "../lib/api";
+import { getDashboard } from "../lib/api";
 import { formatCurrency, formatPercent, scoreTone } from "../lib/dealMetrics";
 import { Dashboard } from "../lib/types";
 
 export function DashboardView() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -21,13 +20,6 @@ export function DashboardView() {
   useEffect(() => {
     void load();
   }, []);
-
-  async function seedDemo() {
-    setBusy(true);
-    await bootstrapDemoPortfolio();
-    await load();
-    setBusy(false);
-  }
 
   const pipelineTotal = useMemo(() => {
     if (!dashboard) return 0;
@@ -45,10 +37,10 @@ export function DashboardView() {
           <h2>Portfolio Akquise</h2>
           <p>Aktive Pipeline, Rendite, Cashflow und rote Flaggen.</p>
         </div>
-        <button className="button primary" onClick={seedDemo} disabled={busy}>
-          <RefreshCw size={16} />
-          Demo laden
-        </button>
+        <Link className="button primary" href="/listings">
+          <Mail size={16} />
+          E-Mail-Import
+        </Link>
       </section>
 
       <section className="metric-grid">
