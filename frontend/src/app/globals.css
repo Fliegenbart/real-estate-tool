@@ -761,6 +761,223 @@ td {
   color: var(--watch);
 }
 
+.listings-page {
+  gap: 16px;
+}
+
+.listings-page > * {
+  min-width: 0;
+}
+
+.listing-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 136px;
+  border: 1px solid #cfd8d4;
+  border-left: 5px solid var(--accent);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(19, 111, 74, 0.08), rgba(224, 159, 47, 0.05) 42%, #ffffff 100%);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.listing-command-copy {
+  display: grid;
+  gap: 5px;
+  max-width: 780px;
+}
+
+.listing-command-copy h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.08;
+}
+
+.listing-command-copy p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 680px;
+}
+
+.listing-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.listing-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.listing-insight {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 10px;
+  min-height: 88px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(19, 31, 27, 0.05);
+  padding: 14px;
+}
+
+.listing-insight svg {
+  grid-row: span 2;
+  color: var(--accent);
+}
+
+.listing-insight span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.listing-insight strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.listing-insight.needs-work svg,
+.listing-insight.needs-work strong {
+  color: var(--watch);
+}
+
+.listing-filters {
+  display: grid;
+  grid-template-columns: auto minmax(170px, 1.3fr) repeat(4, minmax(118px, 1fr)) minmax(130px, auto);
+  align-items: end;
+}
+
+.filter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: var(--text);
+}
+
+.filter-title svg {
+  color: var(--accent);
+}
+
+.listing-search-field input {
+  min-width: 220px;
+}
+
+.listing-toggle {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 0 10px;
+}
+
+.email-import-panel {
+  border-left: 4px solid var(--accent-2);
+}
+
+.listing-table-panel {
+  overflow: hidden;
+}
+
+.listings-table {
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.listings-table th:nth-child(1),
+.listings-table td:nth-child(1) {
+  width: 32%;
+}
+
+.listings-table th:nth-child(2),
+.listings-table td:nth-child(2) {
+  width: 14%;
+}
+
+.listings-table th:nth-child(3),
+.listings-table td:nth-child(3) {
+  width: 12%;
+}
+
+.listings-table th:nth-child(9),
+.listings-table td:nth-child(9) {
+  width: 112px;
+}
+
+.listing-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 18px;
+}
+
+.listing-table-head h2,
+.listing-table-head p {
+  margin: 0;
+}
+
+.listing-table-head h2 {
+  font-size: 16px;
+}
+
+.listing-table-head p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.listings-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.listings-table tbody tr {
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.listings-table tbody tr:hover {
+  background: #fbfcfa;
+}
+
+.listing-title-cell strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.money-value {
+  white-space: nowrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 8px;
+  background: #e7f5ee;
+  color: var(--good);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-pill.rejected {
+  background: #fff0ed;
+  color: var(--risk);
+}
+
+.listings-table .row-actions {
+  justify-content: flex-end;
+}
+
 .decision-chip {
   display: inline-flex;
   align-items: center;
@@ -974,10 +1191,28 @@ td {
   .dashboard-grid,
   .deal-grid,
   .kpi-strip,
+  .listing-insight-grid,
   .region-outlook-grid,
   .acquisition-controls,
   .renovation-controls {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .listing-command {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .listing-primary-actions {
+    justify-content: flex-start;
+  }
+
+  .listing-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .filter-title {
+    grid-column: 1 / -1;
   }
 
   .panel.wide {
@@ -1002,6 +1237,7 @@ td {
   .deal-grid,
   .fact-grid,
   .kpi-strip,
+  .listing-insight-grid,
   .risk-grid,
   .region-outlook-grid,
   .outlook-metric-list,
@@ -1011,6 +1247,76 @@ td {
   .acquisition-controls,
   .renovation-controls {
     grid-template-columns: 1fr;
+  }
+
+  .listing-command {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  .listing-command-copy h2 {
+    font-size: 24px;
+  }
+
+  .listing-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .listing-search-field input {
+    min-width: 0;
+  }
+
+  .listing-table-panel .table-wrap {
+    overflow: visible;
+  }
+
+  .listings-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .listings-table thead {
+    display: none;
+  }
+
+  .listings-table tbody,
+  .listings-table tr,
+  .listings-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .listings-table tr {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+
+  .listings-table td {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 10px;
+    border: 0;
+    padding: 7px 0;
+  }
+
+  .listings-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .listings-table td:first-child {
+    display: block;
+    padding-top: 0;
+  }
+
+  .listings-table td:first-child::before {
+    display: none;
+  }
+
+  .listings-table .row-actions {
+    justify-content: flex-start;
   }
 }
 
