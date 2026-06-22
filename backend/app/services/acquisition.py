@@ -94,6 +94,7 @@ class BankPackage(BaseModel):
     title: str
     bank_summary: dict[str, Any]
     financing_request: dict[str, Any]
+    development_credit: dict[str, Any]
     strengths: list[str]
     risks: list[str]
     missing_documents: list[str]
@@ -332,6 +333,7 @@ def build_bank_package(deal: dict[str, Any]) -> BankPackage:
     underwriting = deal.get("latest_underwriting") or {}
     score = deal.get("latest_score") or {}
     listing = deal.get("listing") or {}
+    renovation = (deal.get("latest_renovation_case") or {}).get("results") or {}
     documents = deal.get("documents") or []
     present_documents = {doc.get("document_type") for doc in documents}
     missing_documents = [doc for doc in REQUIRED_BANK_DOCUMENTS if doc not in present_documents]
@@ -356,6 +358,11 @@ def build_bank_package(deal: dict[str, Any]) -> BankPackage:
         "remaining_loan_at_fixation_end": underwriting.get("remaining_loan_at_fixation_end"),
         "stressed_monthly_cashflow_before_tax": underwriting.get("stressed_monthly_cashflow_before_tax"),
     }
+    development_credit = build_bank_development_credit(
+        listing=listing,
+        renovation=renovation,
+        underwriting=underwriting,
+    )
 
     strengths = score.get("positive_factors") or []
     risks = (score.get("negative_factors") or []) + (score.get("red_flags") or [])
@@ -383,17 +390,87 @@ def build_bank_package(deal: dict[str, Any]) -> BankPackage:
             "items": missing_documents,
         },
     ]
+    if renovation:
+        sections.insert(
+            2,
+            {
+                "title": "Sanierungs-/Refi-Case",
+                "items": [
+                    f"Geplantes Sanierungsbudget: {renovation.get('planned_capex')}",
+                    f"Wertsteigerung aus Miete: {renovation.get('implied_value_uplift_from_rent')}",
+                    f"Kapital freisetzbar: {renovation.get('potential_equity_released')}",
+                    f"Nach Refi gebundenes Sanierungskapital: {renovation.get('net_equity_still_bound_after_refinance')}",
+                    f"Sanierungs-ROI: {renovation.get('simple_roi_percent')}%",
+                    f"Empfehlung: {renovation.get('recommendation')}",
+                ]
+                + [
+                    f"Hinweis: {warning}"
+                    for warning in (renovation.get("warnings") or [])
+                ],
+            },
+        )
 
     return BankPackage(
         deal_id=int(deal["id"]),
         title=deal.get("title") or "Unbenannter Deal",
         bank_summary=bank_summary,
         financing_request=financing_request,
+        development_credit=development_credit,
         strengths=strengths,
         risks=risks,
         missing_documents=missing_documents,
         sections=sections,
         disclaimer="Bankenpaket ist eine strukturierte Arbeitsvorlage; Finanzierung, Bewertung, Steuern und Recht muessen fachlich geprueft werden.",
+    )
+
+
+def build_bank_development_credit(
+    *,
+    listing: dict[str, Any],
+    renovation: dict[str, Any],
+    underwriting: dict[str, Any],
+) -> dict[str, Any]:
+    capex = optional_dec(renovation.get("planned_capex") or listing.get("expected_initial_capex"))
+    value_uplift = optional_dec(renovation.get("implied_value_uplift_from_rent"))
+    equity_release = optional_dec(renovation.get("potential_equity_released"))
+    dscr = optional_dec(underwriting.get("dscr"))
+    cashflow = optional_dec(underwriting.get("monthly_cashflow_before_tax"))
+    base_case_blocked = (dscr is not None and dscr < Decimal("1.10")) or (cashflow is not None and cashflow < 0)
+    has_value_signal = bool(renovation) and value_uplift is not None and equity_release is not None and equity_release > 0
+
+    if not renovation:
+        status = "missing"
+        label = "Entwicklung nicht belegt"
+        price_credit = Decimal("0")
+    elif base_case_blocked:
+        status = "memo_only"
+        label = "Nur Memo-Upside"
+        price_credit = Decimal("0")
+    elif has_value_signal:
+        status = "bank_review"
+        label = "Bankbewertung pruefen"
+        price_credit = money(min(equity_release, value_uplift * Decimal("0.25")))
+    else:
+        status = "memo_only"
+        label = "Nur Memo-Upside"
+        price_credit = Decimal("0")
+
+    return json_ready(
+        {
+            "status": status,
+            "label": label,
+            "price_credit_eur": money(price_credit),
+            "equity_release_eur": money(equity_release or Decimal("0")),
+            "value_uplift_eur": money(value_uplift or Decimal("0")),
+            "planned_capex_eur": money(capex or Decimal("0")),
+            "rule": "Entwicklungspotential ist nicht Basis-Cashflow und zaehlt im Bankenpaket erst nach Bankbewertung, Capex-Angebot und Unterlagenfreigabe.",
+            "next_documents": [
+                "Bankbewertung oder konservativer Nachher-Wert",
+                "Capex-Angebot mit Gewerken und Puffer",
+                "Mietvertrag, Zielmiete und rechtliche Mietanpassung",
+                "WEG-Beschlusslage, Grundriss und Energieausweis",
+            ],
+        }
     )
 
 

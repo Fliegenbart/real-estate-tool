@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import {
   Building2,
   Compass,
@@ -40,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <small>GmbH Underwriting</small>
           </span>
         </Link>
-        <nav className="nav-list">
+        <nav className="nav-list" aria-label="Hauptnavigation">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;

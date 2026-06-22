@@ -1,6 +1,7 @@
 "use client";
 
 import { Database, Info, RefreshCw } from "lucide-react";
+import React from "react";
 import type { FocusEvent, MouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getRegion, getRegions, refreshOwnRegionMetrics, seedRegionDefaults } from "../lib/api";
@@ -44,6 +45,16 @@ const CATEGORY_INFO: Record<string, { label: string; help: string }> = {
   },
 };
 
+type StandorteLoadState = "loading" | "ready" | "error";
+
+function readableStandorteError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Standortdaten konnten nicht geladen werden";
+}
+
 function InfoTip({ text }: { text: string }) {
   const [position, setPosition] = useState<{ top: number; left: number; placement: "top" | "bottom" } | null>(null);
 
@@ -78,6 +89,8 @@ function InfoTip({ text }: { text: string }) {
 export function StandorteView() {
   const [regions, setRegions] = useState<RegionPayload[]>([]);
   const [selected, setSelected] = useState<RegionPayload | null>(null);
+  const [loadState, setLoadState] = useState<StandorteLoadState>("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [maxFactor, setMaxFactor] = useState<string>("");
@@ -86,11 +99,17 @@ export function StandorteView() {
   const [hideStructural, setHideStructural] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadState("loading");
+    setLoadError(null);
     try {
-      setRegions(await getRegions());
-    } catch {
+      const nextRegions = await getRegions();
+      setRegions(nextRegions);
+      setLoadState("ready");
+    } catch (error) {
       setRegions([]);
-      setStatus("Backend nicht erreichbar (Port 8000).");
+      setSelected(null);
+      setLoadError(readableStandorteError(error));
+      setLoadState("error");
     }
   }, []);
 
@@ -137,6 +156,31 @@ export function StandorteView() {
       return true;
     });
   }, [regions, minScore, maxFactor, maxVacancy, hideStructural]);
+
+  if (loadState === "loading" || loadState === "error") {
+    const isError = loadState === "error";
+    return (
+      <div className="page">
+        <section className={`pipeline-load-state ${isError ? "error" : "loading"}`} role={isError ? "alert" : "status"} aria-live="polite">
+          <div>
+            <span className="section-kicker">{isError ? "API-Fehler" : "Datenabruf"}</span>
+            <h3>{isError ? "Standorte konnten nicht geladen werden" : "Standorte werden geladen"}</h3>
+            <p>
+              {isError
+                ? `${loadError}. Keine Standort-, Score- oder Portfolioentscheidung ableiten.`
+                : "Regionen, Scores und eigene Marktdaten werden geladen. Noch keine Standort- oder Portfolioentscheidung ableiten."}
+            </p>
+          </div>
+          {isError && (
+            <button className="button primary" type="button" onClick={() => void load()}>
+              <RefreshCw size={16} />
+              Erneut laden
+            </button>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

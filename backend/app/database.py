@@ -43,17 +43,53 @@ def ensure_schema_compatibility(target_engine: Engine) -> None:
     if not inspector.has_table("financing_scenarios"):
         return
 
-    existing = {column["name"] for column in inspector.get_columns("financing_scenarios")}
-    if "capex_financed_percent" in existing:
-        return
+    financing_columns = {column["name"] for column in inspector.get_columns("financing_scenarios")}
+    location_columns = (
+        {column["name"] for column in inspector.get_columns("location_scores")}
+        if inspector.has_table("location_scores")
+        else set()
+    )
 
     with target_engine.begin() as conn:
-        conn.execute(
-            text(
-                "ALTER TABLE financing_scenarios "
-                "ADD COLUMN capex_financed_percent NUMERIC(8, 3) NOT NULL DEFAULT 0"
+        if "capex_financed_percent" not in financing_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE financing_scenarios "
+                    "ADD COLUMN capex_financed_percent NUMERIC(8, 3) NOT NULL DEFAULT 0"
+                )
             )
-        )
+
+        if location_columns:
+            for column_name in [
+                "transit_access_score",
+                "daily_needs_score",
+                "demand_anchor_score",
+                "leisure_quality_score",
+                "short_term_rental_score",
+                "nuisance_resilience_score",
+            ]:
+                if column_name not in location_columns:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE location_scores "
+                            f"ADD COLUMN {column_name} INTEGER NOT NULL DEFAULT 60"
+                        )
+                    )
+            if "evidence_confidence" not in location_columns:
+                conn.execute(
+                    text("ALTER TABLE location_scores ADD COLUMN evidence_confidence VARCHAR(20)")
+                )
+            if "evidence_data_completeness_percent" not in location_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE location_scores "
+                        "ADD COLUMN evidence_data_completeness_percent INTEGER"
+                    )
+                )
+            if "evidence_notes" not in location_columns:
+                conn.execute(text("ALTER TABLE location_scores ADD COLUMN evidence_notes JSON"))
+            if "evidence_inputs" not in location_columns:
+                conn.execute(text("ALTER TABLE location_scores ADD COLUMN evidence_inputs JSON"))
 
 
 def get_db() -> Generator[Session, None, None]:

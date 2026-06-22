@@ -1,9 +1,31 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
+
+
+MICRO_LOCATION_WEIGHTS = {
+    "transit_access_score": 0.25,
+    "daily_needs_score": 0.25,
+    "demand_anchor_score": 0.20,
+    "leisure_quality_score": 0.10,
+    "short_term_rental_score": 0.05,
+    "nuisance_resilience_score": 0.15,
+}
+
+DEAL_LOCATION_SCORE_FIELDS = [
+    "population_trend_score",
+    "vacancy_risk_score",
+    "purchasing_power_score",
+    "public_transport_score",
+    "employer_access_score",
+    "micro_location_score",
+    "urban_environment_quality_score",
+    "noise_risk_score",
+    "flood_risk_score",
+]
 
 
 def clamp(value: float, lower: float = 0, upper: float = 100) -> int:
@@ -17,6 +39,12 @@ class LocationMetricsInput(BaseModel):
     public_transport_score: int = 60
     employer_access_score: int = 60
     micro_location_score: int = 60
+    transit_access_score: int = 60
+    daily_needs_score: int = 60
+    demand_anchor_score: int = 60
+    leisure_quality_score: int = 60
+    short_term_rental_score: int = 60
+    nuisance_resilience_score: int = 60
     urban_environment_quality_score: Optional[int] = None
     noise_risk_score: int = 60
     flood_risk_score: int = 60
@@ -68,6 +96,8 @@ class RegionOutlookResult(BaseModel):
     positive_factors: list[str]
     caution_factors: list[str]
     key_metrics: list[dict[str, str | int]]
+    micro_location_factors: list[dict[str, str | int]]
+    target_group_profiles: list[dict[str, Any]]
     data_quality_notes: list[str]
     next_recommended_action: str
 
@@ -172,6 +202,19 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
     elif values["micro_location_score"] < 55:
         caution_factors.append("Micro-location is not yet strong enough for a growth premium.")
 
+    if (
+        values["transit_access_score"] >= 75
+        and values["daily_needs_score"] >= 75
+        and values["demand_anchor_score"] >= 75
+    ):
+        positive_factors.append("Transit, daily needs, and local demand anchors make the micro-location more liquid.")
+    if values["short_term_rental_score"] >= 75:
+        positive_factors.append("Short-term rental demand can be optional upside, subject to local rules.")
+    elif values["short_term_rental_score"] < 45:
+        caution_factors.append("Short-term rental demand is weak; do not underwrite Airbnb upside.")
+    if values["nuisance_resilience_score"] < 55:
+        caution_factors.append("Street-level nuisance factors weaken the micro-location despite nearby amenities.")
+
     if values["urban_environment_quality_score"] >= 75:
         positive_factors.append("Urban environment quality supports a stable, investable neighborhood thesis.")
     elif values["urban_environment_quality_score"] < 55:
@@ -189,6 +232,9 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
         data_quality_notes.append("Location inputs are treated as reviewed external or official data.")
     data_quality_notes.append(
         "Urban environment quality uses objective neighborhood signals only; nationality, ethnicity, religion, or origin are not used."
+    )
+    data_quality_notes.append(
+        "Short-term rental signals are optional upside only; validate local rules before treating Airbnb or tourism demand as investment evidence."
     )
 
     if total_score >= 75:
@@ -220,6 +266,8 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
         positive_factors=positive_factors,
         caution_factors=caution_factors,
         key_metrics=key_metrics,
+        micro_location_factors=micro_location_factor_payload(values),
+        target_group_profiles=target_group_profile_payload(values),
         data_quality_notes=data_quality_notes,
         next_recommended_action=next_action,
     )
@@ -232,9 +280,18 @@ def weighted_score(values: dict[str, int], weights: dict[str, float]) -> int:
 
 def normalized_location_values(location: LocationMetricsInput) -> dict[str, int]:
     values = location.model_dump()
+    if any(int(values[key] or 60) != 60 for key in MICRO_LOCATION_WEIGHTS):
+        values["micro_location_score"] = derive_micro_location_score(values)
     if values["urban_environment_quality_score"] is None:
         values["urban_environment_quality_score"] = derive_urban_environment_quality_score(values)
     return {key: int(value) for key, value in values.items() if value is not None}
+
+
+def derive_micro_location_score(values: dict[str, Optional[int]]) -> int:
+    return weighted_score(
+        {key: int(values[key] or 60) for key in MICRO_LOCATION_WEIGHTS},
+        MICRO_LOCATION_WEIGHTS,
+    )
 
 
 def derive_urban_environment_quality_score(values: dict[str, Optional[int]]) -> int:
@@ -272,11 +329,172 @@ def metric_interpretation(name: str, value: int) -> str:
         "public_transport_score": "transport connectivity",
         "employer_access_score": "jobs access",
         "micro_location_score": "street-level location quality",
+        "transit_access_score": "transit access",
+        "daily_needs_score": "everyday amenities",
+        "demand_anchor_score": "demand anchors",
+        "leisure_quality_score": "leisure and green quality",
+        "short_term_rental_score": "short-term rental optionality",
+        "nuisance_resilience_score": "nuisance resilience",
         "urban_environment_quality_score": "objective neighborhood quality",
         "noise_risk_score": "noise resilience",
         "flood_risk_score": "flood resilience",
     }
     return f"{direction} signal for {labels.get(name, name.replace('_', ' '))}"
+
+
+def micro_location_factor_payload(values: dict[str, int]) -> list[dict[str, str | int]]:
+    return [
+        {
+            "name": name,
+            "value": int(values[name]),
+            "weight": int(weight * 100),
+            "interpretation": metric_interpretation(name, int(values[name])),
+        }
+        for name, weight in MICRO_LOCATION_WEIGHTS.items()
+    ]
+
+
+def target_group_profile_payload(values: dict[str, int]) -> list[dict[str, Any]]:
+    profiles = [
+        target_group_profile(
+            "commuter",
+            "Pendler",
+            weighted_score(
+                values,
+                {
+                    "transit_access_score": 0.45,
+                    "employer_access_score": 0.25,
+                    "demand_anchor_score": 0.20,
+                    "nuisance_resilience_score": 0.10,
+                },
+            ),
+            reasons_for_profile(
+                values,
+                [
+                    ("transit_access_score", "Bahnhof/U-Bahn/S-Bahn und Taktung stuetzen Pendlernachfrage."),
+                    ("employer_access_score", "Arbeitsplatznaehe macht die Lage fuer Berufspendler fluessiger."),
+                    ("demand_anchor_score", "Messe, Uni, Klinik oder grosse Arbeitgeber liefern Nachfrage-Anker."),
+                ],
+            ),
+            nuisance_risks(values),
+            "Pendlerzeiten zu Innenstadt, Arbeitsplatzkernen und Bahnhof gegenpruefen.",
+        ),
+        target_group_profile(
+            "family",
+            "Familien",
+            weighted_score(
+                values,
+                {
+                    "daily_needs_score": 0.35,
+                    "leisure_quality_score": 0.20,
+                    "vacancy_risk_score": 0.20,
+                    "nuisance_resilience_score": 0.15,
+                    "flood_risk_score": 0.10,
+                },
+            ),
+            reasons_for_profile(
+                values,
+                [
+                    ("daily_needs_score", "Schule, Kita, Arzt und Einkauf sind fuer Familien alltagsrelevant."),
+                    ("leisure_quality_score", "Parks und Freizeitangebote erhoehen die Wohnqualitaet."),
+                    ("vacancy_risk_score", "Niedriger Leerstand spricht fuer stabile Wohnnachfrage."),
+                ],
+            ),
+            nuisance_risks(values),
+            "Schul-/Kita-Lage, Laerm und sichere Wege vor Gebot pruefen.",
+        ),
+        target_group_profile(
+            "student",
+            "Studierende",
+            weighted_score(
+                values,
+                {
+                    "demand_anchor_score": 0.35,
+                    "transit_access_score": 0.35,
+                    "daily_needs_score": 0.15,
+                    "leisure_quality_score": 0.15,
+                },
+            ),
+            reasons_for_profile(
+                values,
+                [
+                    ("demand_anchor_score", "Uni, Klinik, Messe oder grosse Arbeitgeber koennen junge Nachfrage stuetzen."),
+                    ("transit_access_score", "Guter OePNV macht kleinere Wohnungen leichter vermietbar."),
+                    ("daily_needs_score", "Alltagsversorgung reduziert praktische Vermietungshuerden."),
+                ],
+            ),
+            nuisance_risks(values),
+            "Wohnungsgroesse, WG-Tauglichkeit und lokale Mietregeln pruefen.",
+        ),
+        target_group_profile(
+            "short_term_guest",
+            "Kurzzeitgaeste",
+            weighted_score(
+                values,
+                {
+                    "short_term_rental_score": 0.35,
+                    "transit_access_score": 0.20,
+                    "demand_anchor_score": 0.20,
+                    "leisure_quality_score": 0.15,
+                    "nuisance_resilience_score": 0.10,
+                },
+            ),
+            reasons_for_profile(
+                values,
+                [
+                    ("short_term_rental_score", "Airbnb-Auslastung und Tourismusanker koennen Zusatz-Upside liefern."),
+                    ("demand_anchor_score", "Messe, Klinik, Uni oder Arbeitgeber sind relevante Kurzaufenthaltsgruende."),
+                    ("leisure_quality_score", "Freizeit, Gastro und Kultur staerken Besucherattraktivitaet."),
+                ],
+            ),
+            ["Airbnb nur als optionalen Bonus rechnen; Rechtslage und WEG-Regeln koennen den Nutzen stark begrenzen."]
+            + nuisance_risks(values),
+            "Airbnb-/Zweckentfremdungsregeln und echte Auslastungsdaten pruefen.",
+        ),
+    ]
+    return sorted(profiles, key=lambda profile: int(profile["score"]), reverse=True)
+
+
+def target_group_profile(
+    name: str,
+    label: str,
+    score: int,
+    reasons: list[str],
+    risks: list[str],
+    next_check: str,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "label": label,
+        "score": score,
+        "verdict": target_group_verdict(score),
+        "reasons": reasons[:3] or ["Datenlage ist noch neutral; Zielgruppenfit nicht ueberinterpretieren."],
+        "risks": risks[:3],
+        "next_check": next_check,
+    }
+
+
+def reasons_for_profile(values: dict[str, int], candidates: list[tuple[str, str]]) -> list[str]:
+    return [reason for field, reason in candidates if values[field] >= 75]
+
+
+def nuisance_risks(values: dict[str, int]) -> list[str]:
+    risks: list[str] = []
+    if values["nuisance_resilience_score"] < 60 or values["noise_risk_score"] < 60:
+        risks.append("Laerm, Hauptstrasse, Bahn, Nachtleben oder Industrie koennen die Wohnqualitaet druecken.")
+    if values["flood_risk_score"] < 55:
+        risks.append("Hochwasser-/Umweltrisiko vor Ankauf separat pruefen.")
+    return risks
+
+
+def target_group_verdict(score: int) -> str:
+    if score >= 80:
+        return "Sehr passend"
+    if score >= 70:
+        return "Passend mit Pruefung"
+    if score >= 60:
+        return "Moeglich, aber nicht Hauptthese"
+    return "Nur mit Abschlag oder Spezialthese"
 
 
 def score_deal(data: DealScoringInput, config: ScoreConfig = ScoreConfig()) -> DealScoreResult:
@@ -306,7 +524,8 @@ def score_deal(data: DealScoringInput, config: ScoreConfig = ScoreConfig()) -> D
     else:
         negative_factors.append("Market price benchmark is missing.")
 
-    loc_values = normalized_location_values(data.location).values()
+    normalized_location = normalized_location_values(data.location)
+    loc_values = [normalized_location[field] for field in DEAL_LOCATION_SCORE_FIELDS]
     location_score = clamp(sum(loc_values) / len(loc_values))
     if location_score >= 75:
         positive_factors.append("Location metrics indicate solid demand and infrastructure.")

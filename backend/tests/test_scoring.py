@@ -111,6 +111,42 @@ def test_region_outlook_includes_neutral_urban_environment_quality():
     assert any("nationality" in note for note in result.data_quality_notes)
 
 
+def test_region_outlook_derives_micro_location_from_objective_subsignals():
+    result = score_region_outlook(
+        LocationMetricsInput(
+            population_trend_score=72,
+            vacancy_risk_score=70,
+            purchasing_power_score=68,
+            public_transport_score=60,
+            employer_access_score=64,
+            micro_location_score=40,
+            transit_access_score=92,
+            daily_needs_score=88,
+            demand_anchor_score=90,
+            leisure_quality_score=78,
+            short_term_rental_score=70,
+            nuisance_resilience_score=52,
+            noise_risk_score=58,
+            flood_risk_score=66,
+        )
+    )
+
+    payload = result.model_dump()
+    metrics = {metric["name"]: metric["value"] for metric in payload["key_metrics"]}
+
+    assert metrics["micro_location_score"] == 82
+    assert metrics["transit_access_score"] == 92
+    assert payload.get("micro_location_factors") == [
+        {"name": "transit_access_score", "value": 92, "weight": 25, "interpretation": "strong signal for transit access"},
+        {"name": "daily_needs_score", "value": 88, "weight": 25, "interpretation": "strong signal for everyday amenities"},
+        {"name": "demand_anchor_score", "value": 90, "weight": 20, "interpretation": "strong signal for demand anchors"},
+        {"name": "leisure_quality_score", "value": 78, "weight": 10, "interpretation": "strong signal for leisure and green quality"},
+        {"name": "short_term_rental_score", "value": 70, "weight": 5, "interpretation": "solid signal for short-term rental optionality"},
+        {"name": "nuisance_resilience_score", "value": 52, "weight": 15, "interpretation": "mixed signal for nuisance resilience"},
+    ]
+    assert any("Transit, daily needs, and local demand anchors" in factor for factor in result.positive_factors)
+
+
 def test_region_outlook_marks_weak_urban_environment_as_caution():
     result = score_region_outlook(
         LocationMetricsInput(

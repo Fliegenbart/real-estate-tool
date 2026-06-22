@@ -34,6 +34,8 @@ export type Listing = {
   city?: string | null;
   postal_code?: string | null;
   federal_state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   purchase_price?: number | null;
   living_area_sqm?: number | null;
   number_of_rooms?: number | null;
@@ -315,6 +317,23 @@ export type RegionOutlookMetric = {
   interpretation: string;
 };
 
+export type RegionOutlookMicroFactor = {
+  name: string;
+  value: number;
+  weight: number;
+  interpretation: string;
+};
+
+export type RegionOutlookTargetProfile = {
+  name: string;
+  label: string;
+  score: number;
+  verdict: string;
+  reasons: string[];
+  risks: string[];
+  next_check: string;
+};
+
 export type RegionOutlook = {
   total_score: number;
   category_scores: Record<string, number>;
@@ -322,8 +341,35 @@ export type RegionOutlook = {
   positive_factors: string[];
   caution_factors: string[];
   key_metrics: RegionOutlookMetric[];
+  micro_location_factors: RegionOutlookMicroFactor[];
+  target_group_profiles?: RegionOutlookTargetProfile[];
   data_quality_notes: string[];
   next_recommended_action: string;
+};
+
+export type LocationEvidenceInputs = Record<string, number | string | null>;
+
+export type LocationScorePayload = Record<string, number | string | string[] | LocationEvidenceInputs | null>;
+
+export type DealDocument = {
+  id: number;
+  document_type: string;
+  file_name: string;
+  uploaded_at?: string | null;
+  extracted_text?: string | null;
+  review_status?: string | null;
+  risk_notes?: string | null;
+};
+
+export type DealAuditLogItem = {
+  id: string;
+  event_type: "pipeline" | "score" | "underwriting" | string;
+  label: string;
+  detail?: string | null;
+  metric_label?: string | null;
+  metric_value?: number | string | null;
+  created_at?: string | null;
+  tone?: "good" | "watch" | "risk" | "empty" | string;
 };
 
 export type Deal = {
@@ -332,9 +378,13 @@ export type Deal = {
   pipeline_stage: PipelineStage;
   status?: string;
   seller_motive?: string | null;
+  market_price_per_sqm?: number | null;
+  local_reference_rent_per_sqm?: number | null;
+  rent_control_area?: boolean | null;
   listing?: Listing | null;
   latest_underwriting?: Underwriting | null;
   latest_score?: DealScore | null;
+  latest_renovation_case?: SavedRenovationCase | null;
   weg_health?: { inputs: WegHealthInput; results: WegHealthResult; updated_at: string } | null;
   capital_stacks?: Array<{ id: number; name: string; results: CapitalStackResult }>;
   geo_context?: GeoContext | null;
@@ -343,10 +393,11 @@ export type Deal = {
   financing?: Record<string, number | string | boolean | null> | null;
   tax?: Record<string, number | string | boolean | null> | null;
   rent_law?: Record<string, number | string | boolean | string[] | null> | null;
-  location?: Record<string, number | string | null> | null;
+  location?: LocationScorePayload | null;
   region_outlook?: RegionOutlook | null;
   risk_flags?: Array<Record<string, string | number | null>>;
-  documents?: Array<Record<string, string | number | null>>;
+  documents?: DealDocument[];
+  audit_log?: DealAuditLogItem[];
 };
 
 export type Dashboard = {
@@ -448,11 +499,23 @@ export type BankPackage = {
   title: string;
   bank_summary: Record<string, number | string | null>;
   financing_request: Record<string, number | string | null>;
+  development_credit?: BankDevelopmentCredit;
   strengths: string[];
   risks: string[];
   missing_documents: string[];
   sections: Array<{ title: string; items: string[] }>;
   disclaimer: string;
+};
+
+export type BankDevelopmentCredit = {
+  status: "bank_review" | "memo_only" | "missing" | string;
+  label: string;
+  price_credit_eur: number;
+  equity_release_eur: number;
+  value_uplift_eur: number;
+  planned_capex_eur: number;
+  rule: string;
+  next_documents: string[];
 };
 
 export type RenovationPlanInput = {
@@ -479,6 +542,14 @@ export type RenovationPlan = {
   kfw_hint?: string | null;
   recommendation: "strong_value_add" | "possible_value_add" | "weak_value_add";
   warnings: string[];
+};
+
+export type SavedRenovationCase = {
+  id: number;
+  deal_id?: number;
+  inputs: Record<string, number | string | null>;
+  results: RenovationPlan;
+  created_at?: string | null;
 };
 
 export type InvestmentMemo = {

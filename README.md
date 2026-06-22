@@ -191,6 +191,9 @@ Steuer ist bewusst nur eine Naeherung. Die App zeigt und speichert die Warnung: 
 - `PATCH /api/deals/{id}/tax`
 - `PATCH /api/deals/{id}/rent-law`
 - `PATCH /api/deals/{id}/location`
+- `PATCH /api/deals/{id}/location/evidence`
+- `PATCH /api/deals/{id}/location/osm`
+- `PATCH /api/deals/{id}/location/osm-from-address`
 - `POST /api/deals/{id}/risk-flags`
 - `POST /api/deals/{id}/documents`
 - `PATCH /api/deals/{id}/pipeline`
@@ -207,20 +210,26 @@ Steuer ist bewusst nur eine Naeherung. Die App zeigt und speichert die Warnung: 
 - `POST /api/financing/gift-property-strategies`
 - `GET /api/dashboard`
 
+`PATCH /api/deals/{id}/location/evidence` rechnet aus konkreten Mikrolage-Messwerten automatisch die sechs Lage-Bausteine: OePNV-Naehe, Alltag, Messe/Jobs/Uni, Freizeit, Airbnb optional und Stoerfaktoren. Geeignete Inputs sind z.B. Entfernung zur U-/S-Bahn, Anzahl Supermaerkte im Umkreis, Entfernung zu Uni/Klinik/Messe, Airbnb-Auslastung plus lokaler Rechtsstatus und Stoerquellen wie Hauptstrasse oder Nachtleben. Die Route speichert zusaetzlich Datenvollstaendigkeit, Vertrauensstufe und kurze Evidenz-Notizen am Deal, damit die UI nicht nur einen Score, sondern auch die Begruendung zeigt.
+
+`PATCH /api/deals/{id}/location/osm` erzeugt diese Mikrolage-Messwerte aus OpenStreetMap-/Overpass-Daten. Fuer stabile Tests oder vorbereitete Daten kann der Request `elements` direkt mitsenden; ohne `elements` fragt das Backend Overpass live ueber `OVERPASS_API_URL` oder `https://overpass-api.de/api/interpreter` ab.
+
+`PATCH /api/deals/{id}/location/osm-from-address` startet noch frueher: Die Route nutzt vorhandene Koordinaten am Listing/Objekt oder ein mitgegebenes `geocode_result`, speichert die Koordinaten und bewertet danach die Mikrolage ueber OSM/Overpass. In der Deal-UI koennen Koordinaten auch manuell eingetragen, aus einem Karten-Link uebernommen und dann geprueft werden. Live-Geocoding ueber Nominatim passiert bewusst nur mit `allow_external_geocoding=true`. Fuer die oeffentliche Nominatim-API muss zusaetzlich `NOMINATIM_USER_AGENT` gesetzt sein; optional kann `NOMINATIM_API_URL` auf einen eigenen Dienst zeigen. Keine persoenlichen oder vertraulichen Adressen ungeprueft an externe Geocoding-Dienste senden.
+
 ## Annahmen
 
 - Demo-Adressen sind synthetisch und keine echten Angebote.
 - Kein Web Scraping. Zukuenftige Quellen sollen ueber lizenzierte APIs, Broker-Feeds, E-Mail-Parser oder Nutzer-Uploads kommen.
 - SQLite ist fuer lokale Tests ok. Fuer echte Nutzung sollte PostgreSQL/PostGIS verwendet werden.
 - Mietrecht wird nicht automatisiert entschieden. Es ist nur eine Plausibilitaetspruefung mit klaren Risiko-Hinweisen.
-- Lage-Scores sind im MVP Mock-/Manual-Daten.
+- Lage-Scores sind im MVP Mock-/Manual-Daten oder vorbereitete OSM-/Geocoding-Daten; Live-Abfragen muessen bewusst aktiviert und quellenkonform konfiguriert werden.
 
 ## Bekannte Grenzen
 
 - Kein Login/Rechtemodell.
 - Keine echte Dokument-Extraktion aus PDFs.
 - Kein PDF-Export fuer Investment Memos.
-- Keine echten Mietspiegel-, BORIS-D-, Zensus-, DWD- oder OSM-Daten.
+- Keine echten Mietspiegel-, BORIS-D-, Zensus- oder DWD-Daten.
 - Kein vollstaendiges deutsches Steuer-/Gewerbesteuer-/Zinsschrankenmodell.
 - npm meldet nach Installation Abhaengigkeits-Audit-Warnungen; ein Upgrade-Pass sollte separat geplant werden.
 

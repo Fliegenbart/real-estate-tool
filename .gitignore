@@ -6,6 +6,8 @@ coverage/
 __pycache__/
 .pytest_cache/
 .playwright-mcp/
+.playwright-cli/
+output/
 .venv/
 *.pyc
 *.db

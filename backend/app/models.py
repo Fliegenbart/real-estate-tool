@@ -134,6 +134,7 @@ class Deal(Base):
     weg_health_records: Mapped[list["WegHealthRecord"]] = relationship(back_populates="deal")
     capital_stacks: Mapped[list["CapitalStackScenario"]] = relationship(back_populates="deal")
     geo_contexts: Mapped[list["GeoContext"]] = relationship(back_populates="deal")
+    renovation_cases: Mapped[list["RenovationCase"]] = relationship(back_populates="deal")
 
 
 class Region(Base):
@@ -231,6 +232,18 @@ class CapitalStackScenario(Base):
     deal: Mapped["Deal"] = relationship(back_populates="capital_stacks")
 
 
+class RenovationCase(Base):
+    __tablename__ = "renovation_cases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"))
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    deal: Mapped["Deal"] = relationship(back_populates="renovation_cases")
+
+
 class UnderwritingCase(Base):
     __tablename__ = "underwriting_cases"
 
@@ -291,9 +304,19 @@ class LocationScore(Base):
     public_transport_score: Mapped[int] = mapped_column(Integer, default=60)
     employer_access_score: Mapped[int] = mapped_column(Integer, default=60)
     micro_location_score: Mapped[int] = mapped_column(Integer, default=60)
+    transit_access_score: Mapped[int] = mapped_column(Integer, default=60)
+    daily_needs_score: Mapped[int] = mapped_column(Integer, default=60)
+    demand_anchor_score: Mapped[int] = mapped_column(Integer, default=60)
+    leisure_quality_score: Mapped[int] = mapped_column(Integer, default=60)
+    short_term_rental_score: Mapped[int] = mapped_column(Integer, default=60)
+    nuisance_resilience_score: Mapped[int] = mapped_column(Integer, default=60)
     noise_risk_score: Mapped[int] = mapped_column(Integer, default=60)
     flood_risk_score: Mapped[int] = mapped_column(Integer, default=60)
     source: Mapped[str] = mapped_column(String(80), default="mock/manual")
+    evidence_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    evidence_data_completeness_percent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_notes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    evidence_inputs: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     deal: Mapped[Deal] = relationship(back_populates="location_scores")
 

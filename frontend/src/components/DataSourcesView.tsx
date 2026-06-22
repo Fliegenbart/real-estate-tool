@@ -1,19 +1,24 @@
 "use client";
 
-import { Database, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle, ClipboardList, Database, RefreshCw } from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
 import { getDataSources, seedDefaultDataSources, updateDataSource } from "../lib/api";
+import { dataSourcesHealthBrief } from "../lib/dealMetrics";
 import { DataSource } from "../lib/types";
 
 export function DataSourcesView() {
   const [sources, setSources] = useState<DataSource[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 
   const load = useCallback(async () => {
+    setLoadState("loading");
     try {
       setSources(await getDataSources());
+      setLoadState("ready");
     } catch {
       setSources([]);
+      setLoadState("error");
     }
   }, []);
 
@@ -36,6 +41,11 @@ export function DataSourcesView() {
     await load();
   }
 
+  const health = dataSourcesHealthBrief(sources);
+  const HealthIcon = health.tone === "good" ? CheckCircle : health.tone === "risk" ? AlertTriangle : ClipboardList;
+  const isLoading = loadState === "loading";
+  const hasLoadError = loadState === "error";
+
   return (
     <div className="page">
       <section className="action-row">
@@ -43,11 +53,107 @@ export function DataSourcesView() {
           <h2>Datenquellen-Register</h2>
           <p>Jede Zahl im Tool soll auf eine Quelle mit Datum, Lizenz und Verlaesslichkeit zurueckfuehrbar sein.</p>
         </div>
-        <button className="button primary" onClick={seed} disabled={busy}>
+        <button className="button primary" onClick={seed} disabled={busy || isLoading}>
           <Database size={16} />
           Standard-Quellen anlegen
         </button>
       </section>
+
+      {isLoading ? (
+        <section className="source-health-board empty" aria-label="Quellen-Gesundheit" aria-busy="true">
+          <div className="source-health-head">
+            <div>
+              <span className="section-kicker">Quellen-Gesundheit</span>
+              <h3>Quellen werden geladen</h3>
+              <p>Quellenregister, Importdatum, Lizenz und Datenstand werden vom Backend geladen.</p>
+            </div>
+            <div className="source-health-status empty">
+              <RefreshCw size={18} />
+              Laden
+            </div>
+          </div>
+
+          <div className="source-health-facts">
+            {["Quellen", "Kritisch", "Lizenz offen", "Ø Verlaesslichkeit"].map((label) => (
+              <div className="source-health-fact empty" key={label}>
+                <span>{label}</span>
+                <strong>...</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="source-work-orders">
+            <div className="source-work-orders-head">
+              <ClipboardList size={17} />
+              <h4>Quellen-Arbeitsauftraege</h4>
+            </div>
+            <p className="source-work-order-empty">Arbeitsauftraege erscheinen, sobald die Quellen geladen sind.</p>
+          </div>
+        </section>
+      ) : hasLoadError ? (
+        <section className="source-health-board risk" aria-label="Quellen-Gesundheit">
+          <div className="source-health-head">
+            <div>
+              <span className="section-kicker">Quellen-Gesundheit</span>
+              <h3>Quellen konnten nicht geladen werden</h3>
+              <p>Backend oder Proxy pruefen, dann das Quellenregister erneut laden.</p>
+            </div>
+            <button className="button secondary" onClick={load} disabled={busy}>
+              <RefreshCw size={16} />
+              Neu laden
+            </button>
+          </div>
+        </section>
+      ) : (
+      <section className={`source-health-board ${health.tone}`} aria-label="Quellen-Gesundheit">
+        <div className="source-health-head">
+          <div>
+            <span className="section-kicker">Quellen-Gesundheit</span>
+            <h3>{health.headline}</h3>
+            <p>{health.summary}</p>
+          </div>
+          <div className={`source-health-status ${health.tone}`}>
+            <HealthIcon size={18} />
+            {health.workOrders.length ? `${health.workOrders.length} Auftraege` : "Stabil"}
+          </div>
+        </div>
+
+        <div className="source-health-facts">
+          {health.facts.map((fact) => (
+            <div className={`source-health-fact ${fact.tone}`} key={fact.label}>
+              <span>{fact.label}</span>
+              <strong>{fact.value}</strong>
+            </div>
+          ))}
+        </div>
+
+        <div className="source-work-orders">
+          <div className="source-work-orders-head">
+            <ClipboardList size={17} />
+            <h4>Quellen-Arbeitsauftraege</h4>
+          </div>
+          {health.workOrders.length ? (
+            <div className="source-work-order-list">
+              {health.workOrders.map((order) => (
+                <article className={`source-work-order ${order.tone}`} key={`${order.sourceName}-${order.label}`}>
+                  <div className="source-work-order-meta">
+                    <span>{order.owner}</span>
+                    <strong>{order.label}</strong>
+                  </div>
+                  <div className="source-work-order-main">
+                    <h5>{order.sourceName}</h5>
+                    <p>{order.detail}</p>
+                    <small>{order.action}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="source-work-order-empty">Keine akuten Quellen-Aufgaben. Datenstand und Lizenz weiter im Blick behalten.</p>
+          )}
+        </div>
+      </section>
+      )}
 
       <section className="panel table-panel">
         <div className="table-wrap">
@@ -92,7 +198,13 @@ export function DataSourcesView() {
                   </td>
                 </tr>
               ))}
-              {sources.length === 0 && (
+              {isLoading && (
+                <tr><td colSpan={8}>Quellen werden geladen.</td></tr>
+              )}
+              {hasLoadError && (
+                <tr><td colSpan={8}>Quellenliste nicht verfuegbar. Fehlerhinweis oben pruefen.</td></tr>
+              )}
+              {!isLoading && !hasLoadError && sources.length === 0 && (
                 <tr><td colSpan={8}>Keine Quellen registriert - mit Standard-Quellen starten.</td></tr>
               )}
             </tbody>

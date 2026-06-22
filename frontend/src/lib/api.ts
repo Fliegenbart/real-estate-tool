@@ -10,7 +10,6 @@ import {
   GiftPropertyComparison,
   InvestmentMemo,
   Listing,
-  PIPELINE_STAGES,
   NegotiationDossier,
   PipelineStage,
   RegionPayload,
@@ -36,28 +35,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store"
   });
   if (!response.ok) {
-    throw new Error(`API ${path} failed with ${response.status}`);
+    let message = `API ${path} failed with ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.detail) {
+        message = String(payload.detail);
+      }
+    } catch {
+      // Keep the HTTP status fallback when the API did not return JSON.
+    }
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }
 
 export async function getDashboard(): Promise<Dashboard> {
-  try {
-    return await request<Dashboard>("/dashboard");
-  } catch {
-    return {
-      total_active_listings: 0,
-      active_deals: 0,
-      average_gross_yield: null,
-      average_net_yield: null,
-      red_flagged_deals: 0,
-      top_deals: [],
-      pipeline: PIPELINE_STAGES.reduce(
-        (acc, stage) => ({ ...acc, [stage]: 0 }),
-        {} as Dashboard["pipeline"]
-      )
-    };
-  }
+  return request<Dashboard>("/dashboard");
 }
 
 export async function getAcquisitionCommandCenter(
@@ -70,11 +63,7 @@ export async function getAcquisitionCommandCenter(
 }
 
 export async function getListings(): Promise<Listing[]> {
-  try {
-    return await request<Listing[]>("/listings");
-  } catch {
-    return [];
-  }
+  return request<Listing[]>("/listings");
 }
 
 export async function clearDemoData(): Promise<{ deleted_listings: number; deleted_deals: number }> {
@@ -93,11 +82,7 @@ export async function convertListing(id: number): Promise<Deal> {
 }
 
 export async function getDeals(): Promise<Deal[]> {
-  try {
-    return await request<Deal[]>("/deals");
-  } catch {
-    return [];
-  }
+  return request<Deal[]>("/deals");
 }
 
 export async function getDeal(id: string | number): Promise<Deal> {
@@ -111,6 +96,40 @@ export async function runUnderwriting(id: number): Promise<Deal> {
 
 export async function runScore(id: number): Promise<Deal> {
   await request(`/deals/${id}/score`, { method: "POST" });
+  return getDeal(id);
+}
+
+export type MicroLocationRefreshOptions = {
+  allowExternalGeocoding?: boolean;
+  manualCoordinates?: {
+    latitude: number;
+    longitude: number;
+    displayName?: string;
+    confidence?: string;
+    source?: string;
+  };
+};
+
+export async function refreshDealMicroLocationFromAddress(
+  id: number,
+  options: MicroLocationRefreshOptions = {}
+): Promise<Deal> {
+  const body: Record<string, unknown> = {
+    allow_external_geocoding: options.allowExternalGeocoding ?? false
+  };
+  if (options.manualCoordinates) {
+    body.geocode_result = {
+      latitude: options.manualCoordinates.latitude,
+      longitude: options.manualCoordinates.longitude,
+      display_name: options.manualCoordinates.displayName || "Manuell gesetzte Koordinaten",
+      confidence: options.manualCoordinates.confidence || "high",
+      source: options.manualCoordinates.source || "manual_coordinates"
+    };
+  }
+  await request(`/deals/${id}/location/osm-from-address`, {
+    method: "PATCH",
+    body: JSON.stringify(body)
+  });
   return getDeal(id);
 }
 
@@ -132,6 +151,23 @@ export async function updatePipeline(id: number, stage: PipelineStage): Promise<
   return request<Deal>(`/deals/${id}/pipeline`, {
     method: "PATCH",
     body: JSON.stringify({ stage })
+  });
+}
+
+export type DocumentReviewInput = {
+  review_status?: string;
+  risk_notes?: string | null;
+  extracted_text?: string | null;
+};
+
+export async function updateDocumentReview(
+  dealId: number,
+  documentId: number,
+  payload: DocumentReviewInput
+): Promise<Deal> {
+  return request<Deal>(`/deals/${dealId}/documents/${documentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
   });
 }
 

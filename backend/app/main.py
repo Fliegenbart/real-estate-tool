@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -27,6 +27,7 @@ from app.models import (
     Property,
     Region,
     RegionMetric,
+    RenovationCase,
     RiskFlag,
     TaxScenario,
     UnderwritingCase,
@@ -48,11 +49,15 @@ from app.services.financing import (
     analyze_capital_stack,
     compare_gift_property_strategies,
 )
+from app.services.geocoding import AddressInput, GeocodeResult, geocode_address
 from app.services.germany import rent_control_lookup, transfer_tax_percent_for_state
 from app.services.ingestion import normalize_listing_row, parse_import
 from app.services.location import MockLocationEnrichmentService
 from app.services.memo import build_investment_memo
+from app.services.memo_pdf import build_investment_memo_pdf
+from app.services.micro_location import MicroLocationEvidenceInput, score_micro_location_evidence
 from app.services.negotiation import NegotiationContext, build_negotiation_dossier
+from app.services.osm_micro_location import OsmMicroLocationInput, evidence_from_osm_input
 from app.services.region_data import REGION_DATA_SOURCES, SEED_CITIES, SEED_METRIC_COLUMNS, SEED_SOURCE_NAME
 from app.services.region_import import (
     RegionImportConfig,
@@ -65,7 +70,13 @@ from app.services.region_import import (
 from app.services.region_score import score_region
 from app.services.rent_law import RentLawInput, check_rent_law_plausibility
 from app.services.renovation import RenovationPlanInput, analyze_renovation_plan
-from app.services.scoring import DealScoringInput, LocationMetricsInput, score_deal, score_region_outlook
+from app.services.scoring import (
+    DealScoringInput,
+    LocationMetricsInput,
+    normalized_location_values,
+    score_deal,
+    score_region_outlook,
+)
 from app.services.tax_briefing import build_tax_briefing
 from app.services.underwriting import TaxAssumptions, UnderwritingInput, calculate_underwriting
 from app.services.weg_health import WegHealthInput, assess_weg_health
@@ -84,6 +95,26 @@ PIPELINE_STAGES = [
     "Rejected",
 ]
 
+GATED_PIPELINE_STAGES = {
+    "Offer submitted",
+    "Due diligence",
+    "Notary",
+    "Bought",
+}
+
+REQUIRED_DUE_DILIGENCE_DOCUMENTS = {
+    "expose",
+    "energy_certificate",
+    "declaration_of_division",
+    "weg_minutes",
+    "economic_plan",
+    "annual_statement",
+    "maintenance_reserve_statement",
+    "rental_contract",
+    "floor_plan",
+    "land_register_excerpt",
+}
+
 DOCUMENT_TYPES = {
     "expose",
     "energy_certificate",
@@ -97,6 +128,36 @@ DOCUMENT_TYPES = {
     "land_register_excerpt",
     "other",
 }
+DOCUMENT_REVIEW_STATUSES = {"not_reviewed", "reviewed", "approved", "rejected"}
+
+LOCATION_SCORE_FIELDS = [
+    "population_trend_score",
+    "vacancy_risk_score",
+    "purchasing_power_score",
+    "public_transport_score",
+    "employer_access_score",
+    "micro_location_score",
+    "transit_access_score",
+    "daily_needs_score",
+    "demand_anchor_score",
+    "leisure_quality_score",
+    "short_term_rental_score",
+    "nuisance_resilience_score",
+    "noise_risk_score",
+    "flood_risk_score",
+]
+MICRO_LOCATION_EVIDENCE_UPDATE_FIELDS = [
+    "public_transport_score",
+    "employer_access_score",
+    "micro_location_score",
+    "transit_access_score",
+    "daily_needs_score",
+    "demand_anchor_score",
+    "leisure_quality_score",
+    "short_term_rental_score",
+    "nuisance_resilience_score",
+    "noise_risk_score",
+]
 
 
 app = FastAPI(title="German Real Estate Acquisition MVP", version="0.1.0")
@@ -216,8 +277,21 @@ class LocationUpdate(BaseModel):
     public_transport_score: Optional[int] = None
     employer_access_score: Optional[int] = None
     micro_location_score: Optional[int] = None
+    transit_access_score: Optional[int] = None
+    daily_needs_score: Optional[int] = None
+    demand_anchor_score: Optional[int] = None
+    leisure_quality_score: Optional[int] = None
+    short_term_rental_score: Optional[int] = None
+    nuisance_resilience_score: Optional[int] = None
     noise_risk_score: Optional[int] = None
     flood_risk_score: Optional[int] = None
+
+
+class AddressOsmRefreshRequest(BaseModel):
+    geocode_result: Optional[GeocodeResult] = None
+    osm_elements: Optional[list[dict[str, Any]]] = None
+    radius_meters: int = 3000
+    allow_external_geocoding: bool = False
 
 
 class RiskFlagPayload(BaseModel):
@@ -233,6 +307,12 @@ class DocumentPayload(BaseModel):
     extracted_text: Optional[str] = None
     review_status: str = "not_reviewed"
     risk_notes: Optional[str] = None
+
+
+class DocumentReviewUpdate(BaseModel):
+    review_status: Optional[str] = None
+    risk_notes: Optional[str] = None
+    extracted_text: Optional[str] = None
 
 
 class PipelineUpdate(BaseModel):
@@ -477,7 +557,7 @@ def convert_listing_to_deal(listing_id: int, db: Session = Depends(get_db)) -> d
     location = MockLocationEnrichmentService().enrich(listing.city, listing.postal_code)
     location_score = LocationScore(
         deal_id=deal.id,
-        **location.model_dump(exclude={"urban_environment_quality_score"}),
+        **location_score_values(location),
     )
     region = find_region_for_city(db, listing.city)
     if region is not None:
@@ -600,10 +680,136 @@ def update_location(deal_id: int, payload: LocationUpdate, db: Session = Depends
         db.add(location)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(location, key, value)
+    apply_derived_location_scores(location)
     location.source = "manual"
     db.commit()
     db.refresh(location)
     return model_to_dict(location)
+
+
+@app.patch("/api/deals/{deal_id}/location/evidence")
+def update_location_from_evidence(
+    deal_id: int, payload: MicroLocationEvidenceInput, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    return apply_micro_location_evidence_to_deal(deal_id, payload, db)
+
+
+def apply_micro_location_evidence_to_deal(
+    deal_id: int, evidence: MicroLocationEvidenceInput, db: Session
+) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    result = score_micro_location_evidence(evidence)
+    stored_evidence_inputs = json_safe(evidence.model_dump())
+    location = latest(deal.location_scores)
+    if location is None:
+        location = LocationScore(deal_id=deal.id)
+        db.add(location)
+    for field in MICRO_LOCATION_EVIDENCE_UPDATE_FIELDS:
+        setattr(location, field, getattr(result.location, field))
+    apply_derived_location_scores(location)
+    location.source = result.source
+    location.evidence_confidence = result.confidence
+    location.evidence_data_completeness_percent = result.data_completeness_percent
+    location.evidence_notes = result.evidence_notes
+    location.evidence_inputs = stored_evidence_inputs
+    db.commit()
+    db.refresh(location)
+    evidence_payload = dict(stored_evidence_inputs)
+    evidence_payload["confidence"] = result.confidence
+    evidence_payload["data_completeness_percent"] = result.data_completeness_percent
+    evidence_payload["evidence_notes"] = result.evidence_notes
+    return {
+        "location": model_to_dict(location),
+        "evidence": json_safe(evidence_payload),
+        "evidence_result": json_safe(result.model_dump()),
+        "region_outlook": build_region_outlook_payload(location),
+    }
+
+
+def resolve_deal_geocode(deal: Deal, payload: AddressOsmRefreshRequest) -> GeocodeResult:
+    if payload.geocode_result is not None:
+        return payload.geocode_result
+    existing = existing_deal_geocode(deal)
+    if existing is not None:
+        return existing
+    if not payload.allow_external_geocoding:
+        raise HTTPException(
+            status_code=400,
+            detail="No coordinates available. Provide geocode_result or set allow_external_geocoding=true.",
+        )
+    try:
+        return geocode_address(address_input_for_deal(deal))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def existing_deal_geocode(deal: Deal) -> Optional[GeocodeResult]:
+    for source_name, obj in [("listing", deal.listing), ("property", deal.property)]:
+        if obj is not None and obj.latitude is not None and obj.longitude is not None:
+            return GeocodeResult(
+                latitude=float(obj.latitude),
+                longitude=float(obj.longitude),
+                display_name=f"Existing {source_name} coordinates",
+                confidence="high",
+                source=f"{source_name}_coordinates",
+            )
+    return None
+
+
+def address_input_for_deal(deal: Deal) -> AddressInput:
+    obj = deal.listing or deal.property
+    if obj is None:
+        raise HTTPException(status_code=400, detail="Deal has no listing or property address.")
+    return AddressInput(
+        street=obj.street,
+        house_number=obj.house_number,
+        postal_code=obj.postal_code,
+        city=obj.city,
+        federal_state=obj.federal_state,
+    )
+
+
+def persist_deal_coordinates(deal: Deal, geocode: GeocodeResult) -> None:
+    lat = Decimal(str(geocode.latitude))
+    lon = Decimal(str(geocode.longitude))
+    if deal.listing is not None:
+        deal.listing.latitude = lat
+        deal.listing.longitude = lon
+    if deal.property is not None:
+        deal.property.latitude = lat
+        deal.property.longitude = lon
+
+
+@app.patch("/api/deals/{deal_id}/location/osm")
+def update_location_from_osm(
+    deal_id: int, payload: OsmMicroLocationInput, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    evidence = evidence_from_osm_input(payload)
+    return apply_micro_location_evidence_to_deal(deal_id, evidence, db)
+
+
+@app.patch("/api/deals/{deal_id}/location/osm-from-address")
+def update_location_from_address_osm(
+    deal_id: int, payload: AddressOsmRefreshRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    geocode = resolve_deal_geocode(deal, payload)
+    persist_deal_coordinates(deal, geocode)
+    db.flush()
+    evidence = evidence_from_osm_input(
+        OsmMicroLocationInput(
+            latitude=geocode.latitude,
+            longitude=geocode.longitude,
+            radius_meters=payload.radius_meters,
+            elements=payload.osm_elements,
+        )
+    )
+    result = apply_micro_location_evidence_to_deal(deal_id, evidence, db)
+    db.refresh(deal)
+    result["geocode"] = json_safe(geocode.model_dump())
+    result["listing"] = listing_to_dict(deal.listing) if deal.listing else None
+    result["property"] = model_to_dict(deal.property) if deal.property else None
+    return result
 
 
 @app.post("/api/deals/{deal_id}/risk-flags", status_code=status.HTTP_201_CREATED)
@@ -621,6 +827,8 @@ def add_document(deal_id: int, payload: DocumentPayload, db: Session = Depends(g
     deal = require_deal(db, deal_id)
     if payload.document_type not in DOCUMENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported document type.")
+    if payload.review_status not in DOCUMENT_REVIEW_STATUSES:
+        raise HTTPException(status_code=400, detail="Unsupported document review status.")
     document = Document(deal_id=deal.id, **payload.model_dump())
     db.add(document)
     db.commit()
@@ -628,11 +836,34 @@ def add_document(deal_id: int, payload: DocumentPayload, db: Session = Depends(g
     return model_to_dict(document)
 
 
+@app.patch("/api/deals/{deal_id}/documents/{document_id}")
+def update_document_review(
+    deal_id: int, document_id: int, payload: DocumentReviewUpdate, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    deal = require_deal(db, deal_id)
+    document = db.get(Document, document_id)
+    if document is None or document.deal_id != deal.id:
+        raise HTTPException(status_code=404, detail="Document not found for deal.")
+    update_data = payload.model_dump(exclude_unset=True)
+    review_status = update_data.get("review_status")
+    if review_status is not None and review_status not in DOCUMENT_REVIEW_STATUSES:
+        raise HTTPException(status_code=400, detail="Unsupported document review status.")
+    for key, value in update_data.items():
+        setattr(document, key, value)
+    deal.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(deal)
+    return deal_detail_payload(db, deal)
+
+
 @app.patch("/api/deals/{deal_id}/pipeline")
 def update_pipeline(deal_id: int, payload: PipelineUpdate, db: Session = Depends(get_db)) -> dict[str, Any]:
     deal = require_deal(db, deal_id)
     if payload.stage not in PIPELINE_STAGES:
         raise HTTPException(status_code=400, detail="Unsupported pipeline stage.")
+    pipeline_gate = pipeline_stage_gate_summary(deal, payload.stage)
+    if pipeline_gate["blocked"]:
+        raise HTTPException(status_code=409, detail=pipeline_gate["message"])
     deal.pipeline_stage = payload.stage
     deal.updated_at = datetime.utcnow()
     item = DealPipelineItem(deal_id=deal.id, stage=payload.stage, notes=payload.notes)
@@ -640,6 +871,95 @@ def update_pipeline(deal_id: int, payload: PipelineUpdate, db: Session = Depends
     db.commit()
     db.refresh(deal)
     return deal_detail_payload(db, deal)
+
+
+def pipeline_stage_gate_summary(deal: Deal, target_stage: str) -> dict[str, Any]:
+    if target_stage not in GATED_PIPELINE_STAGES or target_stage == deal.pipeline_stage or target_stage == "Rejected":
+        return {"blocked": False, "ready_count": 6, "total": 6, "blockers": [], "message": ""}
+
+    blockers = pipeline_stage_gate_blockers(deal)
+    ready_count = 6 - len(blockers)
+    if not blockers:
+        return {"blocked": False, "ready_count": ready_count, "total": 6, "blockers": [], "message": ""}
+
+    message = (
+        f"Ankaufsfreigabe blockiert {target_stage}: {ready_count}/6 Gates bestanden. "
+        f"Offen: {', '.join(blockers)}."
+    )
+    return {
+        "blocked": True,
+        "ready_count": ready_count,
+        "total": 6,
+        "blockers": blockers,
+        "message": message,
+    }
+
+
+def pipeline_stage_gate_blockers(deal: Deal) -> list[str]:
+    blockers: list[str] = []
+    latest_underwriting = latest(deal.underwriting_cases)
+    latest_score = latest(deal.scores)
+    latest_location = latest(deal.location_scores)
+
+    underwriting_results = latest_underwriting.results if latest_underwriting else {}
+    cashflow = to_decimal(underwriting_results.get("monthly_cashflow_before_tax"))
+    dscr = to_decimal(underwriting_results.get("dscr"))
+    if latest_underwriting is None or cashflow is None or cashflow < 0 or dscr is None or dscr < Decimal("1.10"):
+        blockers.append("Wirtschaftlichkeit")
+
+    reviewed_documents = {
+        document.document_type
+        for document in deal.documents
+        if document.review_status in {"reviewed", "approved"}
+    }
+    if not REQUIRED_DUE_DILIGENCE_DOCUMENTS.issubset(reviewed_documents):
+        blockers.append("Unterlagen")
+
+    location_score = latest_location.micro_location_score if latest_location else None
+    location_completeness = latest_location.evidence_data_completeness_percent if latest_location else None
+    location_confidence = latest_location.evidence_confidence if latest_location else None
+    if (
+        latest_location is None
+        or location_score is None
+        or location_score < 70
+        or location_completeness is None
+        or location_completeness < 70
+        or location_confidence == "low"
+    ):
+        blockers.append("Mikrolage")
+
+    weg = latest(deal.weg_health_records)
+    weg_results = weg.results if weg else {}
+    if (
+        weg is None
+        or int(weg_results.get("total_score") or 0) < 60
+        or int(weg_results.get("data_completeness_percent") or 0) < 70
+    ):
+        blockers.append("WEG")
+
+    geo_payload = geo_context_payload(latest(deal.geo_contexts))
+    geo_confidence = int(geo_payload.get("data_confidence_percent") or 0) if geo_payload else 0
+    geo_has_special_topic = bool(
+        geo_payload
+        and (
+            geo_payload.get("milieu_protection_area")
+            or geo_payload.get("redevelopment_area")
+            or geo_payload.get("monument_protection")
+        )
+    )
+    if geo_payload is None or geo_confidence < 70 or geo_has_special_topic:
+        blockers.append("Geo/Baurecht")
+
+    red_flags = set(latest_score.red_flags if latest_score else [])
+    high_risk_flags = {
+        flag.code
+        for flag in deal.risk_flags
+        if flag.severity.lower() in {"high", "critical", "red", "block"}
+    }
+    if red_flags or high_risk_flags:
+        blockers.append("Risiken")
+
+    return blockers
 
 
 @app.patch("/api/deals/{deal_id}")
@@ -969,6 +1289,22 @@ def find_region_for_city(db: Session, city: Optional[str]) -> Optional[Region]:
 
 @app.get("/api/deals/{deal_id}/investment-memo")
 def investment_memo(deal_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return investment_memo_payload(deal_id, db)
+
+
+@app.get("/api/deals/{deal_id}/investment-memo.pdf")
+def investment_memo_pdf(deal_id: int, db: Session = Depends(get_db)) -> Response:
+    memo = investment_memo_payload(deal_id, db)
+    pdf_bytes = build_investment_memo_pdf(memo)
+    filename = f"investment-memo-deal-{deal_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def investment_memo_payload(deal_id: int, db: Session) -> dict[str, Any]:
     deal = require_deal(db, deal_id)
     payload = deal_detail_payload(db, deal)
     score = payload.get("latest_score") or {}
@@ -1037,7 +1373,16 @@ def renovation_plan(
         current_energy_class=listing.energy_class,
         target_energy_class=payload.target_energy_class,
     )
-    return json_safe(analyze_renovation_plan(plan_input).model_dump())
+    result = analyze_renovation_plan(plan_input)
+    db.add(
+        RenovationCase(
+            deal_id=deal.id,
+            inputs=json_safe(plan_input.model_dump()),
+            results=json_safe(result.model_dump()),
+        )
+    )
+    db.commit()
+    return json_safe(result.model_dump())
 
 
 @app.post("/api/acquisition/command-center")
@@ -1172,6 +1517,7 @@ def clear_database(db: Session) -> None:
         DealPipelineItem,
         WegHealthRecord,
         CapitalStackScenario,
+        RenovationCase,
         GeoContext,
         ListingPriceEvent,
         Unit,
@@ -1217,6 +1563,7 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
     financing = latest(deal.financing_scenarios)
     tax = latest(deal.tax_scenarios)
     location = latest(deal.location_scores)
+    renovation_case = latest(deal.renovation_cases)
     return {
         **model_to_dict(deal),
         "listing": listing_to_dict(deal.listing) if deal.listing else None,
@@ -1231,11 +1578,13 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
         "risk_flags": [model_to_dict(flag) for flag in deal.risk_flags],
         "documents": [model_to_dict(document) for document in deal.documents],
         "pipeline_history": [model_to_dict(item) for item in deal.pipeline_items],
+        "audit_log": build_deal_audit_log(deal),
         "weg_health": weg_health_payload(deal),
         "capital_stacks": [
             {"id": item.id, "name": item.name, "results": item.results}
             for item in sorted(deal.capital_stacks, key=lambda s: s.id, reverse=True)
         ],
+        "latest_renovation_case": model_to_dict(renovation_case) if renovation_case else None,
         "geo_context": geo_context_payload(latest(deal.geo_contexts)),
         "region": deal_region_summary(db, deal),
         "signals": [
@@ -1246,6 +1595,72 @@ def deal_detail_payload(db: Session, deal: Deal) -> dict[str, Any]:
             )
         ],
     }
+
+
+def build_deal_audit_log(deal: Deal) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+
+    for item in deal.pipeline_items:
+        events.append(
+            {
+                "id": f"pipeline-{item.id}",
+                "event_type": "pipeline",
+                "label": f"Pipeline: {item.stage}",
+                "detail": item.notes or "Pipeline-Stufe gesetzt.",
+                "metric_label": "Stage",
+                "metric_value": item.stage,
+                "created_at": json_safe(item.updated_at),
+                "tone": "watch" if item.stage not in {"Bought", "Rejected"} else ("good" if item.stage == "Bought" else "risk"),
+                "_sort_at": item.updated_at,
+                "_sort_id": item.id,
+            }
+        )
+
+    for case in deal.underwriting_cases:
+        cashflow = case.results.get("monthly_cashflow_before_tax") if case.results else None
+        dscr = case.results.get("dscr") if case.results else None
+        events.append(
+            {
+                "id": f"underwriting-{case.id}",
+                "event_type": "underwriting",
+                "label": "Underwriting gerechnet",
+                "detail": f"DSCR {dscr}" if dscr is not None else "Cashflow, DSCR und Kaufpreisanker gerechnet.",
+                "metric_label": "Cashflow",
+                "metric_value": cashflow,
+                "created_at": json_safe(case.created_at),
+                "tone": audit_metric_tone(cashflow, positive_is_good=True),
+                "_sort_at": case.created_at,
+                "_sort_id": case.id,
+            }
+        )
+
+    for score in deal.scores:
+        events.append(
+            {
+                "id": f"score-{score.id}",
+                "event_type": "score",
+                "label": f"Score gerechnet: {score.total_score}",
+                "detail": score.next_recommended_action,
+                "metric_label": "Score",
+                "metric_value": score.total_score,
+                "created_at": json_safe(score.created_at),
+                "tone": "good" if score.total_score >= 75 else "watch" if score.total_score >= 60 else "risk",
+                "_sort_at": score.created_at,
+                "_sort_id": score.id,
+            }
+        )
+
+    events.sort(key=lambda event: (event["_sort_at"], event["_sort_id"]), reverse=True)
+    return [{key: value for key, value in event.items() if not key.startswith("_")} for event in events]
+
+
+def audit_metric_tone(value: Any, positive_is_good: bool) -> str:
+    numeric = to_decimal(value)
+    if numeric is None:
+        return "empty"
+    if numeric >= 0:
+        return "good" if positive_is_good else "risk"
+    return "risk" if positive_is_good else "good"
 
 
 def deal_region_summary(db: Session, deal: Deal) -> Optional[dict[str, Any]]:
@@ -1273,6 +1688,17 @@ def build_region_outlook_payload(location: Optional[LocationScore]) -> dict[str,
             source=str(location_payload.get("source") or "mock/manual"),
         )
     return json_safe(result.model_dump())
+
+
+def location_score_values(location: LocationMetricsInput) -> dict[str, int]:
+    values = normalized_location_values(location)
+    return {field: values[field] for field in LOCATION_SCORE_FIELDS}
+
+
+def apply_derived_location_scores(location: LocationScore) -> None:
+    values = location_score_values(LocationMetricsInput(**model_to_dict(location)))
+    for field, value in values.items():
+        setattr(location, field, value)
 
 
 def weg_health_payload(deal: Deal) -> Optional[dict[str, Any]]:
