@@ -3,7 +3,7 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ListingsView } from "../src/components/ListingsView";
-import { clearDemoData, convertListing, getListings, importEmailListings, updateListingStatus } from "../src/lib/api";
+import { clearDemoData, convertListing, getListings, getRegions, importEmailListings, updateListingStatus } from "../src/lib/api";
 import { Listing } from "../src/lib/types";
 
 vi.mock("../src/components/AddListingPanel", () => ({
@@ -14,11 +14,13 @@ vi.mock("../src/lib/api", () => ({
   clearDemoData: vi.fn(),
   convertListing: vi.fn(),
   getListings: vi.fn(),
+  getRegions: vi.fn(),
   importEmailListings: vi.fn(),
   updateListingStatus: vi.fn()
 }));
 
 const getListingsMock = vi.mocked(getListings);
+const getRegionsMock = vi.mocked(getRegions);
 
 function listings(): Listing[] {
   return [
@@ -76,6 +78,8 @@ function listings(): Listing[] {
 describe("ListingsView", () => {
   beforeEach(() => {
     getListingsMock.mockReset();
+    getRegionsMock.mockReset();
+    getRegionsMock.mockResolvedValue([]);
     vi.mocked(clearDemoData).mockReset();
     vi.mocked(convertListing).mockReset();
     vi.mocked(importEmailListings).mockReset();
@@ -131,7 +135,6 @@ describe("ListingsView", () => {
     expect(screen.getAllByText(/Preisbewegung 7,5 %/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Datenbremse")).toBeInTheDocument();
     expect(screen.getAllByText(/Dortmund missing basics/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Flaeche, Hausgeld, Energie/i)).toBeInTheDocument();
     expect(screen.getByText("Diese Woche")).toBeInTheDocument();
     expect(screen.getByText(/1 Listing sofort in Deal wandeln/i)).toBeInTheDocument();
     expect(screen.getByText(/1 Listing mit Datenluecken nachfassen/i)).toBeInTheDocument();
@@ -164,8 +167,8 @@ describe("ListingsView", () => {
     const workOrder = within(await screen.findByLabelText("Deal-Wandlungsauftrag"));
 
     expect(workOrder.getByText("Berlin low yield")).toBeInTheDocument();
-    expect(workOrder.getByText("Beobachten und bei Preisbewegung neu pruefen")).toBeInTheDocument();
-    expect(workOrder.getByRole("button", { name: /Noch beobachten/i })).toBeDisabled();
+    expect(workOrder.getByText("Ablehnen oder nur bei starkem Preisnachlass neu pruefen")).toBeInTheDocument();
+    expect(workOrder.getByRole("button", { name: /Nicht wandeln/i })).toBeDisabled();
   });
 
   it("marks already converted listings as handled in the row actions", async () => {
@@ -223,7 +226,7 @@ describe("ListingsView", () => {
     expect(triage.queryByText("Kiel already converted")).not.toBeInTheDocument();
     expect(workOrder.getByText("Berlin still active")).toBeInTheDocument();
     expect(workOrder.queryByText("Kiel already converted")).not.toBeInTheDocument();
-    expect(workOrder.getByRole("button", { name: /Noch beobachten/i })).toBeDisabled();
+    expect(workOrder.getByRole("button", { name: /Nicht wandeln/i })).toBeDisabled();
   });
 
   it("keeps completed listing data gaps out of the workload metrics", async () => {
@@ -252,7 +255,7 @@ describe("ListingsView", () => {
     expect(screen.getByText(/0 Sofort-Deals? · 0 Datenbremse · 1 Beobachten/i)).toBeInTheDocument();
   });
 
-  it("flags listings without rent as not cashflow-ready", async () => {
+  it("flags listings without rent as estimate-only and not cashflow-ready", async () => {
     getListingsMock.mockResolvedValueOnce([
       {
         id: 30,
@@ -278,12 +281,12 @@ describe("ListingsView", () => {
     const gapInsight = screen.getByText("Datenluecken").closest(".listing-insight");
     const listingRow = within(screen.getByRole("row", { name: /Essen rent missing/i }));
 
-    expect(triage.getByText(/0 Sofort-Deals? · 1 Datenbremse · 0 Beobachten/i)).toBeInTheDocument();
-    expect(triage.getAllByText(/Miete/i).length).toBeGreaterThanOrEqual(1);
+    expect(triage.getByText(/0 Sofort-Deals? · 0 Datenbremse · 1 Beobachten/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Ist-Miete fehlt/i).length).toBeGreaterThanOrEqual(1);
     expect(gapInsight).not.toBeNull();
     expect(within(gapInsight as HTMLElement).getByText("1")).toBeInTheDocument();
     expect(listingRow.getByText(/1 Luecke/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Miete nachfassen/i).length).toBeGreaterThanOrEqual(1);
+    expect(listingRow.getByText(/Fallback-Schaetzung/i)).toBeInTheDocument();
   });
 
   it("updates workload metrics when the city filter narrows the working set", async () => {

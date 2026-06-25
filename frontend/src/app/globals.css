@@ -7637,7 +7637,7 @@ td {
 
 .listing-insight-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
   gap: 10px;
 }
 
@@ -7673,6 +7673,11 @@ td {
 .listing-insight.needs-work svg,
 .listing-insight.needs-work strong {
   color: var(--watch);
+}
+
+.listing-insight.deal-ready svg,
+.listing-insight.deal-ready strong {
+  color: var(--good);
 }
 
 .listing-triage {
@@ -7899,27 +7904,32 @@ td {
 }
 
 .listings-table {
-  min-width: 1080px;
+  min-width: 1240px;
   table-layout: fixed;
 }
 
 .listings-table th:nth-child(1),
 .listings-table td:nth-child(1) {
-  width: 32%;
+  width: 26%;
 }
 
 .listings-table th:nth-child(2),
 .listings-table td:nth-child(2) {
-  width: 14%;
+  width: 13%;
 }
 
 .listings-table th:nth-child(3),
 .listings-table td:nth-child(3) {
-  width: 12%;
+  width: 13%;
 }
 
-.listings-table th:nth-child(9),
-.listings-table td:nth-child(9) {
+.listings-table th:nth-child(4),
+.listings-table td:nth-child(4) {
+  width: 11%;
+}
+
+.listings-table th:nth-child(10),
+.listings-table td:nth-child(10) {
   width: 112px;
 }
 
@@ -7988,6 +7998,99 @@ td {
 
 .listings-table .row-actions {
   justify-content: flex-end;
+}
+
+.deal-verdict-badge {
+  display: grid;
+  gap: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 8px 9px;
+  background: #f7f9f8;
+}
+
+.deal-verdict-badge strong {
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.deal-verdict-badge span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.deal-verdict-badge.interesting {
+  border-color: rgba(40, 126, 90, 0.3);
+  background: #e7f5ee;
+  color: var(--good);
+}
+
+.deal-verdict-badge.review {
+  border-color: rgba(175, 122, 19, 0.3);
+  background: #fff6df;
+  color: var(--watch);
+}
+
+.deal-verdict-badge.reject {
+  border-color: rgba(177, 62, 47, 0.28);
+  background: #fff0ed;
+  color: var(--risk);
+}
+
+.deal-verdict-badge.not_evaluable {
+  background: #f5f6f6;
+  color: var(--muted);
+}
+
+.rent-yield-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.rent-yield-cell strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.rent-yield-cell span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.rent-source-chip {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: #edf3f0;
+  color: var(--muted);
+  padding: 3px 7px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.rent-source-chip.high {
+  background: #e7f5ee;
+  color: var(--good);
+}
+
+.rent-source-chip.medium {
+  background: #fff6df;
+  color: var(--watch);
+}
+
+.rent-source-chip.low {
+  background: #fff0ed;
+  color: var(--risk);
+}
+
+.muted-cell {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .decision-chip {
@@ -8922,6 +9025,13 @@ td {
   .listings-table td {
     box-sizing: border-box;
     display: block;
+    width: 100%;
+  }
+
+  .listings-table th,
+  .listings-table td,
+  .listings-table th:nth-child(n),
+  .listings-table td:nth-child(n) {
     width: 100%;
   }
 

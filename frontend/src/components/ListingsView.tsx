@@ -16,9 +16,9 @@ import {
   XCircle
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
-import { clearDemoData, convertListing, getListings, importEmailListings, updateListingStatus } from "../lib/api";
+import { clearDemoData, convertListing, getListings, getRegions, importEmailListings, updateListingStatus } from "../lib/api";
 import { filterListings, formatCurrency, formatNumber, formatPercent, grossYield, hasMissingCoreData } from "../lib/dealMetrics";
-import { Listing, ListingFilters } from "../lib/types";
+import { Listing, ListingFilters, RegionPayload } from "../lib/types";
 import { AddListingPanel } from "./AddListingPanel";
 
 type ListingsLoadState = "loading" | "ready" | "error";
@@ -90,11 +90,34 @@ function median(values: number[]): number | null {
 
 type ListingTriageStatus = "convert" | "data" | "watch";
 
+type RentEstimate = {
+  monthlyRent: number;
+  rentPerSqm: number;
+  source: "actual" | "listing_estimate" | "region_estimate" | "fallback_estimate";
+  label: string;
+  confidence: "high" | "medium" | "low";
+};
+
+type DealVerdictStatus = "interesting" | "review" | "reject" | "not_evaluable";
+
+type DealVerdict = {
+  status: DealVerdictStatus;
+  label: string;
+  tone: "good" | "watch" | "risk" | "empty";
+  summary: string;
+  rent: RentEstimate | null;
+  grossYield: number | null;
+  rentFactor: number | null;
+  pricePerSqm: number | null;
+  blockers: string[];
+};
+
 type ListingTriageRow = {
   listing: Listing;
   status: ListingTriageStatus;
   action: string;
   score: number;
+  verdict: DealVerdict;
   missingLabels: string[];
   reasons: string[];
 };
@@ -113,6 +136,7 @@ type ListingTriageBrief = {
 
 export function ListingsView() {
   const [listings, setListings] = useState<Listing[]>([]);
+  const [regions, setRegions] = useState<RegionPayload[]>([]);
   const [loadState, setLoadState] = useState<ListingsLoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ListingFilters>({
@@ -132,10 +156,16 @@ export function ListingsView() {
     setLoadState("loading");
     setLoadError(null);
     try {
-      setListings(await getListings());
+      const [nextListings, nextRegions] = await Promise.all([
+        getListings(),
+        getRegions().catch(() => [] as RegionPayload[])
+      ]);
+      setListings(nextListings);
+      setRegions(nextRegions);
       setLoadState("ready");
     } catch (error) {
       setListings([]);
+      setRegions([]);
       setLoadError(readableListingsError(error));
       setLoadState("error");
     }
@@ -158,11 +188,17 @@ export function ListingsView() {
     const active = activeListings.length;
     const missing = activeListings.filter(hasMissingCoreData).length;
     const medianPrice = median(activeListings.map((listing) => listing.purchase_price).filter((value): value is number => Boolean(value)));
-    const yields = activeListings.map(grossYield).filter((value): value is number => value !== null);
+    const yields = activeListings
+      .map((listing) => listingDealVerdict(listing, regions).grossYield)
+      .filter((value): value is number => value !== null);
     const averageYield = yields.length ? yields.reduce((sum, value) => sum + value, 0) / yields.length : null;
     return { active, missing, medianPrice, averageYield };
-  }, [filtered]);
-  const triage = useMemo(() => listingTriageBrief(filtered), [filtered]);
+  }, [filtered, regions]);
+  const dealStats = useMemo(() => dealVerdictStats(filtered, regions), [filtered, regions]);
+  const verdictsById = useMemo(() => {
+    return new Map(filtered.map((listing) => [listing.id, listingDealVerdict(listing, regions)]));
+  }, [filtered, regions]);
+  const triage = useMemo(() => listingTriageBrief(filtered, regions), [filtered, regions]);
 
   async function importFromEmail() {
     setImportStatus(null);
@@ -276,6 +312,16 @@ export function ListingsView() {
           <span>Datenluecken</span>
           <strong>{isReady ? stats.missing : isLoading ? "Laden" : "Fehler"}</strong>
         </div>
+        <div className={`listing-insight ${isReady && dealStats.interesting ? "deal-ready" : ""}`}>
+          <CheckCircle size={17} />
+          <span>Interessant</span>
+          <strong>{isReady ? dealStats.interesting : isLoading ? "Laden" : "Fehler"}</strong>
+        </div>
+        <div className="listing-insight">
+          <FileSearch size={17} />
+          <span>Pruefen</span>
+          <strong>{isReady ? dealStats.review : isLoading ? "Laden" : "Fehler"}</strong>
+        </div>
       </section>
 
       {isReady && <ListingTriageSection triage={triage} />}
@@ -364,8 +410,8 @@ export function ListingsView() {
                 : isError
                   ? "Rendite kann wegen API-Fehler nicht berechnet werden."
                   : stats.averageYield
-                    ? `Ø Bruttorendite ${formatPercent(stats.averageYield)}`
-                    : "Rendite erscheint, sobald Miete importiert ist."}
+                    ? `Ø vorsichtige Bruttorendite ${formatPercent(stats.averageYield)}`
+                    : "Rendite erscheint, sobald Miete oder Flaeche importiert ist."}
             </p>
           </div>
           <span className="tag">{isLoading ? "Laden" : isError ? "Fehler" : `${filtered.length} Treffer`}</span>
@@ -375,10 +421,11 @@ export function ListingsView() {
             <thead>
               <tr>
                 <th>Listing</th>
+                <th>Deal-Ampel</th>
                 <th>Stadt</th>
                 <th>Preis</th>
                 <th>Flaeche</th>
-                <th>Brutto</th>
+                <th>Miete/Rendite</th>
                 <th>Markt</th>
                 <th>Energie</th>
                 <th>Status</th>
@@ -391,6 +438,7 @@ export function ListingsView() {
                 const convertActionLabel = listingConvertActionLabel(listing);
                 const canRejectListing = listingCanReject(listing);
                 const rejectActionLabel = listingRejectActionLabel(listing);
+                const verdict = verdictsById.get(listing.id) || listingDealVerdict(listing, regions);
 
                 return (
                 <tr key={listing.id}>
@@ -409,10 +457,11 @@ export function ListingsView() {
                       )}
                     </div>
                   </td>
+                  <td data-label="Deal-Ampel"><DealVerdictBadge verdict={verdict} /></td>
                   <td data-label="Stadt">{listing.city || "Fehlt"}</td>
                   <td data-label="Preis"><strong className="money-value">{formatCurrency(listing.purchase_price)}</strong></td>
                   <td data-label="Flaeche">{formatNumber(listing.living_area_sqm, " m2")}</td>
-                  <td data-label="Brutto">{formatPercent(grossYield(listing))}</td>
+                  <td data-label="Miete/Rendite"><RentYieldCell verdict={verdict} /></td>
                   <td data-label="Markt">{marketSignal(listing)}</td>
                   <td data-label="Energie"><span className="tag">{listing.energy_class || "Fehlt"}</span></td>
                   <td data-label="Status"><span className={`status-pill ${(listing.status || "active").toLowerCase()}`}>{listing.status || "active"}</span></td>
@@ -448,9 +497,9 @@ export function ListingsView() {
                 </tr>
                 );
               })}
-              {isLoading && <tr><td colSpan={9}>Listings werden geladen. Noch keine Trefferbewertung moeglich.</td></tr>}
-              {isError && <tr><td colSpan={9}>Listings konnten nicht geladen werden. Backend oder Proxy pruefen.</td></tr>}
-              {isReady && filtered.length === 0 && <tr><td colSpan={9}>Keine Listings.</td></tr>}
+              {isLoading && <tr><td colSpan={10}>Listings werden geladen. Noch keine Trefferbewertung moeglich.</td></tr>}
+              {isError && <tr><td colSpan={10}>Listings konnten nicht geladen werden. Backend oder Proxy pruefen.</td></tr>}
+              {isReady && filtered.length === 0 && <tr><td colSpan={10}>Keine Listings.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -579,8 +628,34 @@ function ListingConversionCard({ title, items }: { title: string; items: string[
   );
 }
 
-function listingTriageBrief(listings: Listing[]): ListingTriageBrief {
-  const rows = listings.filter(listingCanConvert).map(listingTriageRow).sort((a, b) => b.score - a.score);
+function DealVerdictBadge({ verdict }: { verdict: DealVerdict }) {
+  return (
+    <div className={`deal-verdict-badge ${verdict.status}`}>
+      <strong>{verdict.label}</strong>
+      <span>{verdict.summary}</span>
+    </div>
+  );
+}
+
+function RentYieldCell({ verdict }: { verdict: DealVerdict }) {
+  if (!verdict.rent) {
+    return <span className="muted-cell">Miete fehlt</span>;
+  }
+
+  return (
+    <div className="rent-yield-cell">
+      <strong>{formatCurrency(verdict.rent.monthlyRent)}</strong>
+      <span>
+        {verdict.grossYield !== null ? formatPercent(verdict.grossYield) : "Rendite fehlt"}
+        {verdict.rentFactor !== null ? ` · Faktor ${formatNumber(verdict.rentFactor)}` : ""}
+      </span>
+      <em className={`rent-source-chip ${verdict.rent.confidence}`}>{verdict.rent.label}</em>
+    </div>
+  );
+}
+
+function listingTriageBrief(listings: Listing[], regions: RegionPayload[]): ListingTriageBrief {
+  const rows = listings.filter(listingCanConvert).map((listing) => listingTriageRow(listing, regions)).sort((a, b) => b.score - a.score);
   const convertRows = rows.filter((row) => row.status === "convert");
   const dataRows = rows.filter((row) => row.status === "data");
   const watchRows = rows.filter((row) => row.status === "watch");
@@ -601,28 +676,30 @@ function listingTriageBrief(listings: Listing[]): ListingTriageBrief {
   };
 }
 
-function listingTriageRow(listing: Listing): ListingTriageRow {
-  const missingLabels = missingCoreLabels(listing);
-  const yieldValue = grossYield(listing);
+function listingTriageRow(listing: Listing, regions: RegionPayload[]): ListingTriageRow {
+  const verdict = listingDealVerdict(listing, regions);
+  const missingLabels = missingCoreLabels(listing, verdict);
   const priceReduction = listing.price_reduction_total_percent;
   const days = listing.days_on_market ?? 0;
   const hasMarketSignal = listingHasMarketSignal(listing);
-  const canConvert = missingLabels.length === 0 && ((yieldValue !== null && yieldValue >= 6) || hasMarketSignal);
-  const status: ListingTriageStatus = missingLabels.length > 0 ? "data" : canConvert ? "convert" : "watch";
+  const canConvert = verdict.status === "interesting";
+  const status: ListingTriageStatus = canConvert ? "convert" : verdict.status === "reject" ? "watch" : "data";
   const score =
-    (yieldValue !== null ? Math.min(60, yieldValue * 9) : 0) +
+    (verdict.grossYield !== null ? Math.min(60, verdict.grossYield * 9) : 0) +
     (priceReduction ? Math.min(20, priceReduction * 2) : 0) +
     (days >= 45 ? 12 : 0) +
     (listing.signals?.length ? 8 : 0) -
-    missingLabels.length * 18;
+    verdict.blockers.length * 12 +
+    (hasMarketSignal && verdict.status === "review" ? 6 : 0);
 
   return {
     listing,
     status,
-    action: listingTriageAction(status),
+    action: listingTriageAction(status, verdict),
     score,
+    verdict,
     missingLabels,
-    reasons: listingTriageReasons(listing, yieldValue, missingLabels)
+    reasons: listingTriageReasons(listing, verdict, missingLabels)
   };
 }
 
@@ -639,20 +716,27 @@ function listingTriageHeadline(convertCount: number, dataCount: number, listingC
   return "Listing-Eingang wartet auf Suchagenten";
 }
 
-function listingTriageAction(status: ListingTriageStatus): string {
+function listingTriageAction(status: ListingTriageStatus, verdict?: DealVerdict): string {
   if (status === "convert") {
     return "Sofort in Deal wandeln";
   }
   if (status === "data") {
+    if (verdict?.status === "review") {
+      return "Miete, Hausgeld und Energie pruefen";
+    }
     return "Daten nachfassen, dann unterwriten";
+  }
+  if (verdict?.status === "reject") {
+    return "Ablehnen oder nur bei starkem Preisnachlass neu pruefen";
   }
   return "Beobachten und bei Preisbewegung neu pruefen";
 }
 
-function listingTriageReasons(listing: Listing, yieldValue: number | null, missingLabels: string[]): string[] {
+function listingTriageReasons(listing: Listing, verdict: DealVerdict, missingLabels: string[]): string[] {
   const reasons: string[] = [];
-  if (yieldValue !== null) {
-    reasons.push(`Bruttorendite ${formatPercent(yieldValue)}`);
+  reasons.push(verdict.summary);
+  if (verdict.grossYield !== null) {
+    reasons.push(`Bruttorendite ${formatPercent(verdict.grossYield)}`);
   }
   if (listing.price_reduction_total_percent) {
     reasons.push(`Preisbewegung ${formatPercent(listing.price_reduction_total_percent)}`);
@@ -663,8 +747,8 @@ function listingTriageReasons(listing: Listing, yieldValue: number | null, missi
   if (missingLabels.length > 0) {
     reasons.push(`Fehlt: ${missingLabels.join(", ")}`);
   }
-  if (missingLabels.includes("Miete")) {
-    reasons.push("Miete nachfassen: ohne Ist-Miete sind Cashflow und Bruttorendite nicht bewertbar.");
+  if (!listing.cold_rent_monthly) {
+    reasons.push("Ist-Miete nachfassen: Schaetzung reicht nur fuer die erste Sichtung.");
   }
   return reasons.length ? reasons : ["Noch keine harten Signale im aktuellen Datenstand."];
 }
@@ -688,7 +772,18 @@ function listingConversionBeforeChecks(candidate: ListingTriageRow | null): stri
     return ["Suchagenten-Mail importieren oder Listing manuell erfassen."];
   }
   if (candidate.status === "data") {
-    return [`Fehlende Felder nachtragen: ${candidate.missingLabels.join(", ")}.`];
+    return [
+      candidate.missingLabels.length
+        ? `Fehlende Felder nachtragen: ${candidate.missingLabels.join(", ")}.`
+        : "Ist-Miete, Hausgeld und Energie gegen die Anzeige oder Expose-Daten pruefen.",
+      ...candidate.verdict.blockers.slice(0, 2)
+    ];
+  }
+  if (candidate.verdict.blockers.length > 0) {
+    return [
+      "Vor einer neuen Bewertung diese Punkte klaeren.",
+      ...candidate.verdict.blockers.slice(0, 3)
+    ];
   }
   return [
     "Kaufpreis, Flaeche, Miete, Hausgeld und Energie liegen vor.",
@@ -714,9 +809,9 @@ function listingConversionButtonLabel(candidate: ListingTriageRow): string {
     return "In Deal wandeln";
   }
   if (candidate.status === "data") {
-    return "Daten zuerst schliessen";
+    return "Miete/Kosten pruefen";
   }
-  return "Noch beobachten";
+  return candidate.verdict.status === "reject" ? "Nicht wandeln" : "Noch beobachten";
 }
 
 function listingHasMarketSignal(listing: Listing): boolean {
@@ -742,17 +837,181 @@ function listingMarketSignalDetail(listing: Listing): string {
   return `${yieldValue !== null ? `Bruttorendite ${formatPercent(yieldValue)}` : "Rendite fehlt"} · ${listing.city || "Ort fehlt"}`;
 }
 
-function missingCoreLabels(listing: Listing): string[] {
-  return [
+function missingCoreLabels(listing: Listing, verdict?: DealVerdict): string[] {
+  const labels = [
     [listing.purchase_price, "Kaufpreis"],
     [listing.living_area_sqm, "Flaeche"],
-    [listing.cold_rent_monthly, "Miete"],
     [listing.house_money_monthly, "Hausgeld"],
     [listing.energy_class, "Energie"],
     [listing.city, "Stadt"]
   ]
     .filter(([value]) => value === null || value === undefined || value === "")
     .map(([, label]) => label as string);
+  if (!verdict?.rent) {
+    labels.splice(2, 0, "Miete");
+  }
+  return labels;
+}
+
+function dealVerdictStats(listings: Listing[], regions: RegionPayload[]) {
+  return listings.filter(listingCanConvert).reduce(
+    (acc, listing) => {
+      acc[listingDealVerdict(listing, regions).status] += 1;
+      return acc;
+    },
+    { interesting: 0, review: 0, reject: 0, not_evaluable: 0 } as Record<DealVerdictStatus, number>
+  );
+}
+
+function listingDealVerdict(listing: Listing, regions: RegionPayload[]): DealVerdict {
+  const price = listing.purchase_price ?? null;
+  const area = listing.living_area_sqm ?? null;
+  const rent = estimateRent(listing, regions);
+  const pricePerSqm = price && area ? price / area : null;
+  const requiredBlockers: string[] = [];
+
+  if (!price) requiredBlockers.push("Kaufpreis fehlt");
+  if (!area) requiredBlockers.push("Flaeche fehlt");
+  if (!rent) requiredBlockers.push("Miete fehlt");
+
+  if (!price || !area || !rent) {
+    return {
+      status: "not_evaluable",
+      label: "Nicht bewertbar",
+      tone: "empty",
+      summary: "Preis, Flaeche oder Miete fehlen.",
+      rent,
+      grossYield: null,
+      rentFactor: null,
+      pricePerSqm,
+      blockers: requiredBlockers
+    };
+  }
+
+  const grossYieldValue = (rent.monthlyRent * 12 * 100) / price;
+  const rentFactor = price / (rent.monthlyRent * 12);
+  const blockers = [...requiredBlockers];
+  if (!listing.cold_rent_monthly) blockers.push("Ist-Miete fehlt");
+  if (!listing.house_money_monthly) blockers.push("Hausgeld fehlt");
+  if (!listing.energy_class) blockers.push("Energie fehlt");
+
+  if (grossYieldValue < 4.2 || rentFactor > 24) {
+    return {
+      status: "reject",
+      label: "Ablehnen",
+      tone: "risk",
+      summary: "Rendite wirkt zu schwach fuer den Preis.",
+      rent,
+      grossYield: grossYieldValue,
+      rentFactor,
+      pricePerSqm,
+      blockers
+    };
+  }
+
+  const hasReliableRent = rent.source === "actual" || rent.source === "listing_estimate";
+  const hasCoreCosts = Boolean(listing.house_money_monthly && listing.energy_class);
+  if (grossYieldValue >= 6.2 && hasReliableRent && hasCoreCosts) {
+    return {
+      status: "interesting",
+      label: "Interessant",
+      tone: "good",
+      summary: "Rendite und Pflichtdaten passen fuer die naechste Pruefung.",
+      rent,
+      grossYield: grossYieldValue,
+      rentFactor,
+      pricePerSqm,
+      blockers
+    };
+  }
+
+  return {
+    status: "review",
+    label: "Pruefen",
+    tone: "watch",
+    summary:
+      grossYieldValue >= 6.2
+        ? "Rendite wirkt gut, aber Miete oder Kosten sind noch unsicher."
+        : "Rendite liegt im Mittelfeld; Preis und Kosten gegenpruefen.",
+    rent,
+    grossYield: grossYieldValue,
+    rentFactor,
+    pricePerSqm,
+    blockers
+  };
+}
+
+function estimateRent(listing: Listing, regions: RegionPayload[]): RentEstimate | null {
+  const area = listing.living_area_sqm ?? null;
+  if (listing.cold_rent_monthly && area) {
+    return {
+      monthlyRent: listing.cold_rent_monthly,
+      rentPerSqm: listing.cold_rent_monthly / area,
+      source: "actual",
+      label: "Ist-Miete",
+      confidence: "high"
+    };
+  }
+
+  if (listing.market_rent_estimate_monthly && area) {
+    return {
+      monthlyRent: listing.market_rent_estimate_monthly,
+      rentPerSqm: listing.market_rent_estimate_monthly / area,
+      source: "listing_estimate",
+      label: "Miet-Schaetzung",
+      confidence: "medium"
+    };
+  }
+
+  if (!area) return null;
+
+  const matchedRegion = findMatchingRegion(listing.city, regions);
+  const regionRent = matchedRegion
+    ? matchedRegion.metrics["own_median_rent_eur_sqm"] ?? matchedRegion.metrics["rent_eur_sqm"]
+    : null;
+
+  if (regionRent) {
+    const conservativeRentPerSqm = regionRent * 0.9;
+    return {
+      monthlyRent: conservativeRentPerSqm * area,
+      rentPerSqm: conservativeRentPerSqm,
+      source: "region_estimate",
+      label: "Standort-Schaetzung",
+      confidence: "medium"
+    };
+  }
+
+  const fallbackRentPerSqm = 8;
+  return {
+    monthlyRent: fallbackRentPerSqm * area,
+    rentPerSqm: fallbackRentPerSqm,
+    source: "fallback_estimate",
+    label: "Fallback-Schaetzung",
+    confidence: "low"
+  };
+}
+
+function findMatchingRegion(city: string | null | undefined, regions: RegionPayload[]): RegionPayload | null {
+  const cityName = normalizeRegionName(city);
+  if (!cityName) return null;
+
+  return (
+    regions.find((region) => {
+      const regionName = normalizeRegionName(region.name);
+      return Boolean(regionName && (cityName === regionName || cityName.includes(regionName) || regionName.includes(cityName)));
+    }) || null
+  );
+}
+
+function normalizeRegionName(value: string | null | undefined): string {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(kreis|landkreis|stadt|gemeinde|gmbh|eg|ag|kg|immobilien|volksbank|sparkasse)\b/gi, " ")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function dealCountLabel(count: number): string {
