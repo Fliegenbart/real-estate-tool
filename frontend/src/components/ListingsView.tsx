@@ -250,6 +250,20 @@ export function ListingsView() {
                 ? "Listings konnten nicht geladen werden. Bitte Backend oder Proxy pruefen."
                 : `${filtered.length} von ${listings.length} Angeboten im Suchagenten-Zufluss. Erst sauber filtern, dann als Deal weiterbearbeiten.`}
           </p>
+          <div className="listing-command-metrics" aria-label="Listing-Schnellstatus">
+            <span>
+              <strong>{isReady ? dealStats.review : isLoading ? "..." : "-"}</strong>
+              Pruef-Queue
+            </span>
+            <span>
+              <strong>{isReady ? stats.missing : isLoading ? "..." : "-"}</strong>
+              Offene Luecken
+            </span>
+            <span>
+              <strong>{isReady && stats.averageYield ? formatPercent(stats.averageYield) : isLoading ? "..." : "-"}</strong>
+              Ø Brutto
+            </span>
+          </div>
         </div>
         <div className="listing-primary-actions">
           <button className="button" onClick={() => setShowEmailImport(!showEmailImport)}>
