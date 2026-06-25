@@ -47,7 +47,8 @@ import {
   objectDevelopmentAssumptionDefaults,
   objectDevelopmentPotentialBrief,
   regionOutlookHighlights,
-  scoreTone
+  scoreTone,
+  vvGmbhBuyBoxBrief
 } from "../lib/dealMetrics";
 import { Deal, DealAuditLogItem, RenovationPlan } from "../lib/types";
 import { DealMicroLocationPanel } from "./DealMicroLocationPanel";
@@ -197,6 +198,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const closingCommand = dealClosingCommandBrief(deal);
   const dossierCockpit = dealDossierCockpitBrief(deal);
   const acquisitionThesis = dealAcquisitionThesisBrief(deal);
+  const vvGmbhBuyBox = vvGmbhBuyBoxBrief(deal);
   const developmentPotentialMap = dealDevelopmentPotentialMapBrief(deal);
   const developmentEvidencePack = dealDevelopmentEvidencePackBrief(deal);
   const strategyBrief = dealStrategyBrief(deal);
@@ -602,6 +604,56 @@ export function DealDetailView({ dealId }: { dealId: string }) {
                 : ["These in Memo, Bankpaket und Angebotsgrenze konsistent dokumentieren."]
             }
           />
+        </div>
+      </section>
+
+      <section className={`strategy-brief-band vv-gmbh-buy-box ${vvGmbhBuyBox.tone}`} aria-label="vvGmbH-Buy-Box">
+        <div className="strategy-brief-topline">
+          <div className="deal-decision-copy">
+            <span className="section-kicker">vvGmbH-Buy-Box</span>
+            <h3>{vvGmbhBuyBox.headline}</h3>
+            <p>{vvGmbhBuyBox.summary}</p>
+          </div>
+          <div className={`acquisition-thesis-label ${vvGmbhBuyBox.tone}`}>
+            <span>Haltung</span>
+            <strong>{vvGmbhBuyBox.stanceLabel}</strong>
+          </div>
+        </div>
+
+        <div className="decision-fact-grid">
+          {vvGmbhBuyBox.facts.map((fact) => (
+            <div className={`decision-fact ${fact.tone}`} key={`vv-gmbh-${fact.label}`}>
+              <span>{fact.label === "Wertsteigerung" ? "Basisannahme" : fact.label}</span>
+              <strong>{fact.value}</strong>
+            </div>
+          ))}
+        </div>
+
+        <div className="acquisition-thesis-lane-grid">
+          {vvGmbhBuyBox.lanes.map((lane) => (
+            <article className={`acquisition-thesis-lane ${lane.tone}`} key={`vv-gmbh-lane-${lane.label}`}>
+              <div className="acquisition-thesis-lane-head">
+                <h4>{lane.label}</h4>
+                <span className={`score ${lane.tone}`}>{lane.statusLabel}</span>
+              </div>
+              <p>{lane.summary}</p>
+              <dl>
+                <div>
+                  <dt>Regel</dt>
+                  <dd>{lane.rule}</dd>
+                </div>
+                <div>
+                  <dt>Naechster Schritt</dt>
+                  <dd>{lane.nextAction}</dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+
+        <div className="strategy-brief-detail">
+          <DecisionList title="Leitplanken" items={vvGmbhBuyBox.guardrails} />
+          <DecisionList title="Naechste Schritte" items={vvGmbhBuyBox.nextActions} />
         </div>
       </section>
 

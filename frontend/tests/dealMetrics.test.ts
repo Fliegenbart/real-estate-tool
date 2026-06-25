@@ -62,7 +62,8 @@ import {
   portfolioCommandBrief,
   rankDealsByDecision,
   rankDealsByScore,
-  regionOutlookHighlights
+  regionOutlookHighlights,
+  vvGmbhBuyBoxBrief
 } from "../src/lib/dealMetrics";
 import { BankPackage, Deal } from "../src/lib/types";
 
@@ -4835,6 +4836,93 @@ describe("dealMetrics frontend helpers", () => {
       statusLabel: "Stabil",
       tone: "good"
     });
+  });
+
+  it("warns vvGmbH buyers when a strong location only works through appreciation", () => {
+    const brief = vvGmbhBuyBoxBrief({
+      id: 81,
+      title: "Prestige Lage mit schwachem Cashflow",
+      pipeline_stage: "Underwriting",
+      listing: {
+        id: 81,
+        title: "Listing",
+        city: "Munich",
+        purchase_price: 520000,
+        cold_rent_monthly: 980,
+        house_money_monthly: 360,
+        non_recoverable_costs_monthly: 130,
+        expected_initial_capex: 18000,
+        maintenance_reserve_weg: 9000
+      },
+      latest_underwriting: {
+        monthly_cashflow_before_tax: -824,
+        stressed_monthly_cashflow_before_tax: -849,
+        dscr: 0.57,
+        stressed_dscr: 0.55,
+        gross_initial_yield_percent: 2.26,
+        net_initial_yield_percent: 1.4
+      },
+      latest_score: {
+        total_score: 62,
+        category_scores: {},
+        explanation: "Strong location, weak economics.",
+        positive_factors: ["Sehr gute Mikrolage."],
+        negative_factors: ["Cashflow negativ."],
+        red_flags: ["negative_cashflow_base_case", "dscr_below_threshold"],
+        next_recommended_action: "Renegotiate."
+      },
+      location: { micro_location_score: 88 },
+      weg_health: {
+        inputs: {},
+        updated_at: "2026-06-25",
+        results: {
+          total_score: 52,
+          category_scores: {},
+          flags: ["reserve_low"],
+          positive_factors: [],
+          negative_factors: ["Ruecklage niedrig."],
+          data_completeness_percent: 70,
+          confidence: "medium",
+          summary: "WEG braucht Pruefung.",
+          documents_to_request: ["Ruecklagenstand"]
+        }
+      }
+    });
+
+    expect(brief.status).toBe("warning");
+    expect(brief.headline).toBe("vvGmbH-Warnung: Cashflow vor Wertsteigerung");
+    expect(brief.summary).toContain("0 % Wertsteigerung");
+    expect(brief.summary).toContain("15 Jahre");
+    expect(brief.stanceLabel).toBe("Warnen, nicht automatisch ablehnen");
+    expect(brief.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Wertsteigerung", value: "0 % Basis" }),
+        expect.objectContaining({ label: "Bruttorendite", value: "2,26 %" }),
+        expect.objectContaining({ label: "DSCR", value: "0,57" }),
+        expect.objectContaining({ label: "Stress-Cashflow", value: "-849 €" })
+      ])
+    );
+    expect(brief.lanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Cashflow",
+          statusLabel: "Warnung",
+          rule: expect.stringContaining("laufend Geld verdienen")
+        }),
+        expect.objectContaining({
+          label: "Wertsteigerung",
+          statusLabel: "Nur Bonus",
+          rule: expect.stringContaining("nicht als Rettungsanker")
+        })
+      ])
+    );
+    expect(brief.guardrails).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Steuerberater"),
+        expect.stringContaining("erweiterte Gewerbesteuerkuerzung")
+      ])
+    );
+    expect(brief.nextActions[0]).toContain("Preis");
   });
 
   it("ranks acquisition decision levers by the checks that unlock the most decision value", () => {

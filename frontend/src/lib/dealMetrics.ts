@@ -2077,6 +2077,33 @@ export type PortfolioCommandBrief = {
   capitalWarnings: string[];
 };
 
+export type VvGmbhBuyBoxStatus = "fit" | "warning" | "missing";
+
+export type VvGmbhBuyBoxLane = {
+  label: string;
+  statusLabel: string;
+  summary: string;
+  rule: string;
+  nextAction: string;
+  tone: ReturnType<typeof scoreTone>;
+};
+
+export type VvGmbhBuyBoxBrief = {
+  status: VvGmbhBuyBoxStatus;
+  headline: string;
+  summary: string;
+  stanceLabel: string;
+  tone: ReturnType<typeof scoreTone>;
+  facts: Array<{
+    label: string;
+    value: string;
+    tone: ReturnType<typeof scoreTone>;
+  }>;
+  lanes: VvGmbhBuyBoxLane[];
+  guardrails: string[];
+  nextActions: string[];
+};
+
 export type AssetManagementItemStatus = "stable" | "watch" | "alarm";
 
 export type AssetManagementItem = {
@@ -3819,6 +3846,219 @@ export function portfolioCommandBrief(deals: Deal[]): PortfolioCommandBrief {
     weeklyFocus: portfolioWeeklyFocus(decisionRows, activeDeals),
     capitalWarnings: portfolioCapitalWarnings(negativeCapitalDeals, unpricedCount, dscrWeakCount)
   };
+}
+
+export function vvGmbhBuyBoxBrief(deal: Deal): VvGmbhBuyBoxBrief {
+  const cashflow = numberValue(deal.latest_underwriting?.monthly_cashflow_before_tax);
+  const stressCashflow = numberValue(deal.latest_underwriting?.stressed_monthly_cashflow_before_tax);
+  const dscr = numberValue(deal.latest_underwriting?.dscr);
+  const stressedDscr = numberValue(deal.latest_underwriting?.stressed_dscr);
+  const grossYieldPercent = numberValue(deal.latest_underwriting?.gross_initial_yield_percent) ?? (deal.listing ? grossYield(deal.listing) : null);
+  const netYieldPercent = numberValue(deal.latest_underwriting?.net_initial_yield_percent);
+  const wegScore = numberValue(deal.weg_health?.results?.total_score);
+  const locationScore = numberValue(deal.location?.micro_location_score) ?? numberValue(deal.region_outlook?.total_score);
+  const capex = numberValue(deal.listing?.expected_initial_capex);
+  const hasUnderwriting = Boolean(deal.latest_underwriting);
+  const hasRent = numberValue(deal.listing?.cold_rent_monthly) !== null;
+  const warningReasons = vvGmbhBuyBoxWarningReasons({ cashflow, dscr, grossYieldPercent, stressedDscr, stressCashflow, wegScore });
+  const missingReasons = [
+    !hasUnderwriting ? "Underwriting fehlt." : null,
+    !hasRent ? "Ist-Miete fehlt." : null
+  ].filter((item): item is string => Boolean(item));
+  const status: VvGmbhBuyBoxStatus =
+    missingReasons.length > 0 ? "missing" : warningReasons.length > 0 ? "warning" : "fit";
+  const tone: ReturnType<typeof scoreTone> = status === "fit" ? "good" : status === "warning" ? "watch" : "empty";
+
+  return {
+    status,
+    headline: vvGmbhBuyBoxHeadline(status),
+    summary: vvGmbhBuyBoxSummary(status, warningReasons.length, missingReasons.length),
+    stanceLabel:
+      status === "fit"
+        ? "Langfristig haltbar"
+        : status === "warning"
+          ? "Warnen, nicht automatisch ablehnen"
+          : "Erst Daten schliessen",
+    tone,
+    facts: [
+      { label: "Wertsteigerung", value: "0 % Basis", tone: "empty" },
+      { label: "Haltedauer", value: "15 Jahre", tone: "good" },
+      { label: "Bruttorendite", value: formatPercent(grossYieldPercent), tone: vvGmbhYieldTone(grossYieldPercent) },
+      { label: "DSCR", value: formatNumber(dscr), tone: vvGmbhDscrTone(dscr) },
+      { label: "Stress-Cashflow", value: stressCashflow === null ? "Fehlt" : offerCurrencyText(stressCashflow), tone: stressCashflow === null ? "empty" : cashflowTone(stressCashflow) },
+      { label: "WEG/Capex", value: vvGmbhWegCapexLabel(wegScore, capex), tone: vvGmbhWegTone(wegScore, capex) }
+    ],
+    lanes: vvGmbhBuyBoxLanes({ capex, cashflow, dscr, grossYieldPercent, locationScore, netYieldPercent, stressedDscr, stressCashflow, wegScore }),
+    guardrails: vvGmbhBuyBoxGuardrails(status),
+    nextActions: vvGmbhBuyBoxNextActions({ missingReasons, status, warningReasons })
+  };
+}
+
+function vvGmbhBuyBoxWarningReasons(input: {
+  cashflow: number | null;
+  dscr: number | null;
+  grossYieldPercent: number | null;
+  stressedDscr: number | null;
+  stressCashflow: number | null;
+  wegScore: number | null;
+}): string[] {
+  return [
+    input.grossYieldPercent !== null && input.grossYieldPercent < 7.5 ? `Bruttomietrendite ${formatPercent(input.grossYieldPercent)} liegt unter 7,5 %.` : null,
+    input.cashflow !== null && input.cashflow < 0 ? `Monats-Cashflow ${offerCurrencyText(input.cashflow)} ist negativ.` : null,
+    input.stressCashflow !== null && input.stressCashflow < 0 ? `Stress-Cashflow ${offerCurrencyText(input.stressCashflow)} ist negativ.` : null,
+    input.dscr !== null && input.dscr < 1.25 ? `DSCR ${formatNumber(input.dscr)} liegt unter 1,25.` : null,
+    input.stressedDscr !== null && input.stressedDscr < 1.1 ? `Stress-DSCR ${formatNumber(input.stressedDscr)} liegt unter 1,10.` : null,
+    input.wegScore !== null && input.wegScore < 65 ? `WEG-Score ${Math.round(input.wegScore)} braucht Pruefung.` : null
+  ].filter((item): item is string => Boolean(item));
+}
+
+function vvGmbhBuyBoxHeadline(status: VvGmbhBuyBoxStatus): string {
+  if (status === "fit") {
+    return "vvGmbH-fit: Cashflow traegt ohne Wertsteigerung";
+  }
+  if (status === "warning") {
+    return "vvGmbH-Warnung: Cashflow vor Wertsteigerung";
+  }
+  return "vvGmbH-Buy-Box: Daten fehlen";
+}
+
+function vvGmbhBuyBoxSummary(status: VvGmbhBuyBoxStatus, warningCount: number, missingCount: number): string {
+  if (status === "fit") {
+    return "Das Objekt traegt im aktuellen Datenstand als langfristiger Bestand: 0 % Wertsteigerung in der Basis, 15 Jahre Haltedauer und Reinvestition statt schneller Exit.";
+  }
+  if (status === "warning") {
+    return `${warningCount} Warnsignal${warningCount === 1 ? "" : "e"} gegen die vvGmbH-Buy-Box. 0 % Wertsteigerung bleibt Basis, 15 Jahre Haltedauer bleiben Standard; der Deal wird erklaert und nachverhandelt, nicht automatisch geloescht.`;
+  }
+  return `${missingCount} Kernangabe${missingCount === 1 ? "" : "n"} fehlen. Keine vvGmbH-Entscheidung, bevor Miete, Underwriting, WEG und Finanzierungsstress belegt sind.`;
+}
+
+function vvGmbhBuyBoxLanes(input: {
+  capex: number | null;
+  cashflow: number | null;
+  dscr: number | null;
+  grossYieldPercent: number | null;
+  locationScore: number | null;
+  netYieldPercent: number | null;
+  stressedDscr: number | null;
+  stressCashflow: number | null;
+  wegScore: number | null;
+}): VvGmbhBuyBoxLane[] {
+  return [
+    {
+      label: "Cashflow",
+      statusLabel: input.cashflow === null ? "Fehlt" : input.cashflow >= 0 ? "Traegt" : "Warnung",
+      tone: input.cashflow === null ? "empty" : input.cashflow >= 0 ? "good" : "watch",
+      summary: input.cashflow === null ? "Ist-Cashflow fehlt." : `Monats-Cashflow ${offerCurrencyText(input.cashflow)}.`,
+      rule: "Die Wohnung muss laufend Geld verdienen; Wertsteigerung ist Bonus, nicht Basis.",
+      nextAction: input.cashflow !== null && input.cashflow < 0 ? "Preis, Miete, Hausgeld und Finanzierung nachverhandeln." : "Cashflow mit Mietvertrag und Hausgeldabrechnung belegen."
+    },
+    {
+      label: "WEG/Zustand",
+      statusLabel: input.wegScore === null ? "Pruefen" : input.wegScore >= 70 ? "Stabil" : "Warnung",
+      tone: vvGmbhWegTone(input.wegScore, input.capex),
+      summary: vvGmbhWegCapexLabel(input.wegScore, input.capex),
+      rule: "Ruecklage, Sonderumlagen, Dach, Fassade, Heizung und Leitungen duerfen den Bestandscashflow nicht auffressen.",
+      nextAction: "WEG-Protokolle, Ruecklagenstand, Wirtschaftsplan und absehbare Massnahmen pruefen."
+    },
+    {
+      label: "Vermietbarkeit",
+      statusLabel: input.locationScore === null ? "Beleg fehlt" : input.locationScore >= 70 ? "Dauerhaft" : "Pruefen",
+      tone: input.locationScore === null ? "empty" : input.locationScore >= 70 ? "good" : "watch",
+      summary: input.locationScore === null ? "Mikrolage oder Region fehlen." : `Nachfrage-Score ${Math.round(input.locationScore)}.`,
+      rule: "Langweilige, dauerhaft vermietbare Nachfrage zaehlt mehr als Eigennutzerfantasie.",
+      nextAction: "OePNV, Arbeitgeber, Uni/Klinik, Alltag und Wiedervermietbarkeit belegen."
+    },
+    {
+      label: "Finanzierung",
+      statusLabel: input.dscr === null ? "Fehlt" : input.dscr >= 1.25 && (input.stressedDscr === null || input.stressedDscr >= 1.1) ? "Puffer" : "Warnung",
+      tone: vvGmbhFinanceTone(input.dscr, input.stressedDscr, input.stressCashflow),
+      summary: `DSCR ${formatNumber(input.dscr)} · Stress-DSCR ${formatNumber(input.stressedDscr)} · Stress-Cashflow ${input.stressCashflow === null ? "Fehlt" : offerCurrencyText(input.stressCashflow)}.`,
+      rule: "Kapitaldienstdeckung soll auch mit Zinsstress und Leerstands-/Ausfallpuffer tragen.",
+      nextAction: "5,5-%-Zinsstress, 2-%-Tilgung und Bank-Covenants im Finanzierungspaket pruefen."
+    },
+    {
+      label: "Wertsteigerung",
+      statusLabel: "Nur Bonus",
+      tone: "empty",
+      summary: "0 % Wertsteigerung in der Basisrechnung.",
+      rule: "Wertsteigerung nicht als Rettungsanker verwenden; sie darf nur den schon tragfaehigen Deal verbessern.",
+      nextAction: "Exit-These separat im Memo zeigen und steuerliche Effekte vom Steuerberater pruefen lassen."
+    }
+  ];
+}
+
+function vvGmbhBuyBoxGuardrails(status: VvGmbhBuyBoxStatus): string[] {
+  return [
+    "Steuerberater prueft Koerperschaftsteuer, Ausschuttung, AfA, Buchwert und erweiterte Gewerbesteuerkuerzung; das Tool ist keine Steuerberatung.",
+    "0 % Wertsteigerung in der Basisrechnung; Wertsteigerung bleibt Bonus und darf keinen negativen Cashflow retten.",
+    "Fruehe Exits nur begruenden, nicht als Geschaeftsmodell planen; erweiterte Gewerbesteuerkuerzung und Grundstueckshandel-Risiko separat pruefen.",
+    status === "fit"
+      ? "Auch passende Deals brauchen Unterlagenbelege vor Angebot, Bankversand und Notar."
+      : "Warnung heisst: Preis, Belege oder Finanzierung reparieren, bevor der Deal in Angebot oder Notar laeuft."
+  ];
+}
+
+function vvGmbhBuyBoxNextActions(input: {
+  missingReasons: string[];
+  status: VvGmbhBuyBoxStatus;
+  warningReasons: string[];
+}): string[] {
+  if (input.status === "missing") {
+    return uniqueItems([
+      ...input.missingReasons,
+      "Ist-Miete, Hausgeld, nicht umlagefaehige Kosten, WEG und Underwriting nachziehen."
+    ]);
+  }
+  if (input.status === "fit") {
+    return [
+      "Mietvertrag, Hausgeld, WEG-Protokolle und Bankannahmen als Belege in die Freigabe legen.",
+      "Reinvestitionslogik im Memo dokumentieren: Cashflow bleibt in der Gesellschaft."
+    ];
+  }
+  return uniqueItems([
+    "Preis so nachverhandeln, dass Cashflow, DSCR und Stress-Cashflow ohne Wertsteigerung tragen.",
+    ...input.warningReasons,
+    "Steuer-/Kuerzungsthemen und Exit-These nur als Pruefhinweis, nicht als Kaufargument verwenden."
+  ]).slice(0, 5);
+}
+
+function vvGmbhYieldTone(value: number | null): ReturnType<typeof scoreTone> {
+  if (value === null) return "empty";
+  if (value >= 7.5) return "good";
+  if (value >= 6.5) return "watch";
+  return "risk";
+}
+
+function vvGmbhDscrTone(value: number | null): ReturnType<typeof scoreTone> {
+  if (value === null) return "empty";
+  if (value >= 1.25) return "good";
+  if (value >= 1.1) return "watch";
+  return "risk";
+}
+
+function vvGmbhFinanceTone(dscr: number | null, stressedDscr: number | null, stressCashflow: number | null): ReturnType<typeof scoreTone> {
+  if (dscr === null && stressedDscr === null && stressCashflow === null) return "empty";
+  if ((dscr !== null && dscr < 1.1) || (stressedDscr !== null && stressedDscr < 1.1) || (stressCashflow !== null && stressCashflow < 0)) {
+    return "risk";
+  }
+  if ((dscr !== null && dscr < 1.25) || (stressedDscr !== null && stressedDscr < 1.25)) {
+    return "watch";
+  }
+  return "good";
+}
+
+function vvGmbhWegTone(wegScore: number | null, capex: number | null): ReturnType<typeof scoreTone> {
+  if (wegScore === null && capex === null) return "empty";
+  if ((wegScore !== null && wegScore < 65) || (capex !== null && capex > 0)) return "watch";
+  return "good";
+}
+
+function vvGmbhWegCapexLabel(wegScore: number | null, capex: number | null): string {
+  const parts = [
+    wegScore !== null ? `WEG ${Math.round(wegScore)}` : "WEG fehlt",
+    capex !== null && capex > 0 ? `Capex ${offerCurrencyText(capex)}` : null
+  ].filter((item): item is string => Boolean(item));
+  return parts.join(" · ");
 }
 
 export function assetManagementBrief(deals: Deal[]): AssetManagementBrief {

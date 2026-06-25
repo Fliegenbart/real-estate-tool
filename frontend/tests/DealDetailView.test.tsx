@@ -269,6 +269,25 @@ describe("DealDetailView", () => {
     expect(cockpit.getAllByText(/Notarvorbereitung bleibt gesperrt/i).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("shows an explanatory vvGmbH buy box before development and exit assumptions", async () => {
+    getDealMock.mockResolvedValueOnce(decisionDeal());
+
+    render(<DealDetailView dealId="9" />);
+
+    const buyBox = within(await screen.findByLabelText(/vvGmbH-Buy-Box/i));
+
+    expect(buyBox.getByText("vvGmbH-Buy-Box")).toBeInTheDocument();
+    expect(buyBox.getByText("vvGmbH-Warnung: Cashflow vor Wertsteigerung")).toBeInTheDocument();
+    expect(buyBox.getByText("Warnen, nicht automatisch ablehnen")).toBeInTheDocument();
+    expect(buyBox.getByText("0 % Basis")).toBeInTheDocument();
+    expect(buyBox.getByText("15 Jahre")).toBeInTheDocument();
+    expect(buyBox.getByText("Cashflow")).toBeInTheDocument();
+    expect(buyBox.getByText("Wertsteigerung")).toBeInTheDocument();
+    expect(buyBox.getByText(/Wertsteigerung nicht als Rettungsanker verwenden/i)).toBeInTheDocument();
+    expect(buyBox.getByText(/Steuerberater prueft/i)).toBeInTheDocument();
+    expect(buyBox.getByText(/Preis so nachverhandeln/i)).toBeInTheDocument();
+  });
+
   it("shows a closing command for offer, bank and notary release", async () => {
     getDealMock.mockResolvedValueOnce(decisionDeal());
 
