@@ -29,6 +29,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=68,
             noise_risk_score=68,
             flood_risk_score=72,
+            climate_resilience_score=70,
         ),
         "Dresden": LocationMetricsInput(
             population_trend_score=76,
@@ -45,6 +46,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=71,
             noise_risk_score=70,
             flood_risk_score=76,
+            climate_resilience_score=72,
         ),
         "Dortmund": LocationMetricsInput(
             population_trend_score=63,
@@ -61,6 +63,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=58,
             noise_risk_score=58,
             flood_risk_score=70,
+            climate_resilience_score=63,
         ),
         "Berlin": LocationMetricsInput(
             population_trend_score=88,
@@ -77,6 +80,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=55,
             noise_risk_score=54,
             flood_risk_score=75,
+            climate_resilience_score=58,
         ),
         "Hamburg": LocationMetricsInput(
             population_trend_score=82,
@@ -93,6 +97,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=59,
             noise_risk_score=58,
             flood_risk_score=62,
+            climate_resilience_score=62,
         ),
         "Munich": LocationMetricsInput(
             population_trend_score=86,
@@ -109,6 +114,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=64,
             noise_risk_score=62,
             flood_risk_score=78,
+            climate_resilience_score=57,
         ),
         "Essen": LocationMetricsInput(
             population_trend_score=58,
@@ -125,6 +131,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=57,
             noise_risk_score=60,
             flood_risk_score=68,
+            climate_resilience_score=64,
         ),
         "Hannover": LocationMetricsInput(
             population_trend_score=67,
@@ -141,6 +148,7 @@ class MockLocationEnrichmentService(LocationEnrichmentService):
             nuisance_resilience_score=64,
             noise_risk_score=64,
             flood_risk_score=72,
+            climate_resilience_score=68,
         ),
     }
 

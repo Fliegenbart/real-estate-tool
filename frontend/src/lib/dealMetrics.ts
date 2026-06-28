@@ -209,6 +209,7 @@ export function regionOutlookHighlights(outlook: RegionOutlook | null | undefine
   const priority = [
     "population_trend_score",
     "urban_environment_quality_score",
+    "climate_resilience_score",
     "employer_access_score",
     "purchasing_power_score",
     "vacancy_risk_score"

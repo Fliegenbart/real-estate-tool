@@ -36,6 +36,7 @@ def test_scoring_exposes_red_flags_for_risky_negative_cashflow_deal():
                 micro_location_score=65,
                 noise_risk_score=55,
                 flood_risk_score=70,
+                climate_resilience_score=52,
             ),
         ),
         config=ScoreConfig(minimum_dscr=Decimal("1.15")),
@@ -77,6 +78,7 @@ def test_scoring_rewards_solid_explainable_deal():
                 micro_location_score=84,
                 noise_risk_score=72,
                 flood_risk_score=90,
+                climate_resilience_score=78,
             ),
         )
     )
@@ -100,15 +102,20 @@ def test_region_outlook_includes_neutral_urban_environment_quality():
             urban_environment_quality_score=79,
             noise_risk_score=70,
             flood_risk_score=74,
+            climate_resilience_score=82,
         ),
         source="official/manual",
     )
 
     assert result.total_score >= 78
     assert result.category_scores["urban_environment_quality"] >= 78
+    assert result.category_scores["climate_habitability"] >= 78
     assert any("Urban environment" in factor for factor in result.positive_factors)
+    assert any("Climate habitability" in factor for factor in result.positive_factors)
     assert any(metric["name"] == "urban_environment_quality_score" for metric in result.key_metrics)
+    assert any(metric["name"] == "climate_resilience_score" for metric in result.key_metrics)
     assert any("nationality" in note for note in result.data_quality_notes)
+    assert any("Climate habitability" in note for note in result.data_quality_notes)
 
 
 def test_region_outlook_derives_micro_location_from_objective_subsignals():
@@ -128,6 +135,7 @@ def test_region_outlook_derives_micro_location_from_objective_subsignals():
             nuisance_resilience_score=52,
             noise_risk_score=58,
             flood_risk_score=66,
+            climate_resilience_score=64,
         )
     )
 
@@ -159,9 +167,12 @@ def test_region_outlook_marks_weak_urban_environment_as_caution():
             urban_environment_quality_score=38,
             noise_risk_score=44,
             flood_risk_score=41,
+            climate_resilience_score=42,
         )
     )
 
     assert result.total_score < 50
     assert result.category_scores["urban_environment_quality"] < 45
+    assert result.category_scores["climate_habitability"] < 45
     assert any("Urban environment" in factor for factor in result.caution_factors)
+    assert any("Climate heat" in factor for factor in result.caution_factors)

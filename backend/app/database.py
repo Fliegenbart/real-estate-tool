@@ -67,6 +67,7 @@ def ensure_schema_compatibility(target_engine: Engine) -> None:
                 "leisure_quality_score",
                 "short_term_rental_score",
                 "nuisance_resilience_score",
+                "climate_resilience_score",
             ]:
                 if column_name not in location_columns:
                     conn.execute(

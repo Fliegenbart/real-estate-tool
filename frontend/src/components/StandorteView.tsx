@@ -10,7 +10,7 @@ import { RegionPayload } from "../lib/types";
 
 const COLUMN_HELP: Record<string, string> = {
   score:
-    "Gesamtscore 0-100 fuer deine Strategie: 20 Jahre halten, dann vvGmbH mit Portfolio verkaufen. Gewichtung: Ertragskraft 35%, Nachfragestabilitaet 30%, Wirtschaftsbasis 20%, Exit-Liquiditaet 15%. Harte Risiken (strukturelles Schrumpfen, zu schwache Rendite) deckeln den Score zusaetzlich.",
+    "Gesamtscore 0-100 fuer deine Strategie: 20 Jahre halten, dann vvGmbH mit Portfolio verkaufen. Gewichtung: Ertragskraft 32%, Nachfragestabilitaet 27%, Wirtschaftsbasis 18%, Exit-Liquiditaet 13%, Klima/Bewohnbarkeit 10%. Harte Risiken deckeln den Score zusaetzlich.",
   faktor:
     "Vervielfaeltiger: Kaufpreis geteilt durch Jahreskaltmiete. Faktor 16 = du zahlst 16 Jahresmieten fuer den Kauf. Je niedriger, desto mehr Cashflow. Achtung: gerechnet auf den Stadt-Median - dein Deal-Segment (Verhandlung, einfache Lagen) liegt meist darunter.",
   rendite:
@@ -19,6 +19,8 @@ const COLUMN_HELP: Record<string, string> = {
     "Anteil leerstehender Wohnungen (Orientierung: Zensus 2022). DAS Kernrisiko bei guenstigen Lagen: Leerstand kostet dich nicht nur Miete, sondern verlaengert auch jede Neuvermietung. Ueber 8% plus Schrumpfungsprognose = strukturelles Risiko, ueber 10% harte Red Flag.",
   prognose:
     "Erwartete Bevoelkerungsentwicklung bis 2040 in Prozent - endet genau an deinem geplanten Exit-Horizont. Schrumpfung heisst: weniger Mieter UND weniger Kaeufer fuer dein Portfolio. Unter -8% Red Flag.",
+  klima:
+    "Klima/Bewohnbarkeit in den naechsten 5-15 Jahren: Hitze, Wasserstress, Starkregen/Hochwasser und Stadtklima als Screening-Wert 0-100. Das ist eine Vorpruefung; vor Kauf mit DWD/GERICS und kommunalen Hitze-/Starkregenkarten verifizieren.",
   alq: "Arbeitslosenquote. Proxy fuer Mieterbonitaet, Mietausfallrisiko und Fluktuation - wichtiger als die Miethoehe selbst, wenn du auf puenktliche Zahler angewiesen bist.",
   preis:
     "Median-Angebotspreis je m2 Wohnflaeche. Startwert ist eine grobe Schaetzung; sobald mindestens 3 eigene Listings aus deinem Suchagenten-Zufluss vorliegen, ersetzt deren Median automatisch den Schaetzwert.",
@@ -29,19 +31,23 @@ const COLUMN_HELP: Record<string, string> = {
 const CATEGORY_INFO: Record<string, { label: string; help: string }> = {
   yield_power: {
     label: "Ertragskraft",
-    help: "Wie viel Miete bekommst du fuer den Kaufpreis? Skala: 3% Bruttorendite = 15 Punkte, 7% = 95 Punkte. Traegt 35% des Gesamtscores - der Motor der Cashflow-Strategie.",
+    help: "Wie viel Miete bekommst du fuer den Kaufpreis? Skala: 3% Bruttorendite = 15 Punkte, 7% = 95 Punkte. Traegt 32% des Gesamtscores - der Motor der Cashflow-Strategie.",
   },
   demand_stability: {
     label: "Nachfragestabilitaet",
-    help: "Leerstand heute + Bevoelkerungsprognose 2040, je zur Haelfte. Die Versicherung deines Cashflows: Hoher Leerstand in einer schrumpfenden Stadt ist strukturell (nicht zyklisch) und deckelt diese Kategorie auf 25. Traegt 30%.",
+    help: "Leerstand heute + Bevoelkerungsprognose 2040, je zur Haelfte. Die Versicherung deines Cashflows: Hoher Leerstand in einer schrumpfenden Stadt ist strukturell (nicht zyklisch) und deckelt diese Kategorie auf 25. Traegt 27%.",
   },
   economic_base: {
     label: "Wirtschaftsbasis",
-    help: "Arbeitslosenquote und Kaufkraft: Traegt die lokale Wirtschaft die Mieten dauerhaft? Eine Uni, Klinik oder ein Grossarbeitgeber stabilisiert kleine Staedte ueberproportional. Traegt 20%.",
+    help: "Arbeitslosenquote und Kaufkraft: Traegt die lokale Wirtschaft die Mieten dauerhaft? Eine Uni, Klinik oder ein Grossarbeitgeber stabilisiert kleine Staedte ueberproportional. Traegt 18%.",
   },
   exit_liquidity: {
     label: "Exit-Liquiditaet",
-    help: "Marktgroesse (Einwohner, logarithmisch) plus Aktivitaet des Angebotsmarkts. Zaehlt, weil die vvGmbH in ~20 Jahren MIT Portfolio verkauft werden soll: In einem 40.000-Einwohner-Markt findest du dann schwer einen Kaeufer. Traegt 15%.",
+    help: "Marktgroesse (Einwohner, logarithmisch) plus Aktivitaet des Angebotsmarkts. Zaehlt, weil die vvGmbH in ~20 Jahren MIT Portfolio verkauft werden soll: In einem 40.000-Einwohner-Markt findest du dann schwer einen Kaeufer. Traegt 13%.",
+  },
+  climate_resilience: {
+    label: "Klima/Bewohnbarkeit",
+    help: "Screening fuer 5-15 Jahre: Bleibt die Region trotz Hitze, Wasserstress, Starkregen und Hochwasser gut bewohnbar? Traegt 10%. Vor Kauf mit offiziellen Klimakarten verifizieren.",
   },
 };
 
@@ -234,6 +240,7 @@ export function StandorteView() {
                 <th>Bruttorendite <InfoTip text={COLUMN_HELP.rendite} /></th>
                 <th>Leerstand <InfoTip text={COLUMN_HELP.leerstand} /></th>
                 <th>Prognose 2040 <InfoTip text={COLUMN_HELP.prognose} /></th>
+                <th>Klima 5-15J <InfoTip text={COLUMN_HELP.klima} /></th>
                 <th>ALQ <InfoTip text={COLUMN_HELP.alq} /></th>
                 <th>Preis/m2 <InfoTip text={COLUMN_HELP.preis} /></th>
                 <th>Eigene Listings <InfoTip text={COLUMN_HELP.eigene} /></th>
@@ -253,13 +260,14 @@ export function StandorteView() {
                   <td>{formatPercent(region.score.gross_yield_percent)}</td>
                   <td>{formatPercent(region.metrics["vacancy_rate_percent"])}</td>
                   <td>{formatPercent(region.metrics["population_forecast_2040_percent"])}</td>
+                  <td>{formatNumber(region.metrics["climate_resilience_score"] ?? region.score.category_scores.climate_resilience)}</td>
                   <td>{formatPercent(region.metrics["unemployment_rate_percent"])}</td>
                   <td>{formatCurrency(region.metrics["own_median_price_eur_sqm"] ?? region.metrics["price_eur_sqm"])}</td>
                   <td>{region.metrics["own_listing_count"] ?? "-"}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={9}>Keine Regionen - mit &quot;Startdaten laden&quot; beginnen.</td></tr>
+                <tr><td colSpan={10}>Keine Regionen - mit &quot;Startdaten laden&quot; beginnen.</td></tr>
               )}
             </tbody>
           </table>

@@ -1701,6 +1701,7 @@ describe("dealMetrics frontend helpers", () => {
       key_metrics: [
         { name: "flood_risk_score", value: 74, interpretation: "solid signal for flood resilience" },
         { name: "urban_environment_quality_score", value: 81, interpretation: "strong signal for objective neighborhood quality" },
+        { name: "climate_resilience_score", value: 82, interpretation: "strong signal for 5-15 year climate habitability" },
         { name: "employer_access_score", value: 83, interpretation: "strong signal for jobs access" },
         { name: "population_trend_score", value: 84, interpretation: "strong signal for population demand" },
         { name: "purchasing_power_score", value: 78, interpretation: "strong signal for income strength" },
@@ -1711,8 +1712,8 @@ describe("dealMetrics frontend helpers", () => {
     expect(regionOutlookHighlights(outlook).map((metric) => metric.name)).toEqual([
       "population_trend_score",
       "urban_environment_quality_score",
-      "employer_access_score",
-      "purchasing_power_score"
+      "climate_resilience_score",
+      "employer_access_score"
     ]);
     expect(regionOutlookHighlights(null)).toEqual([]);
   });

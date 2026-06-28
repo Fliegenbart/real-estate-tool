@@ -73,7 +73,9 @@ const regionMetricLabels: Record<string, string> = {
   short_term_rental_score: "Airbnb optional",
   nuisance_resilience_score: "Stoerfaktoren",
   noise_risk_score: "Laerm",
-  flood_risk_score: "Hochwasser"
+  flood_risk_score: "Hochwasser",
+  climate_resilience_score: "Klima 5-15J",
+  climate_habitability: "Klima/Bewohnbarkeit"
 };
 
 const dealCheckPathLinks = [

@@ -12,10 +12,11 @@ from pydantic import BaseModel, ConfigDict
 # liquidity matters because the GmbH portfolio is meant to be sold.
 
 WEIGHTS = {
-    "yield_power": 0.35,
-    "demand_stability": 0.30,
-    "economic_base": 0.20,
-    "exit_liquidity": 0.15,
+    "yield_power": 0.32,
+    "demand_stability": 0.27,
+    "economic_base": 0.18,
+    "exit_liquidity": 0.13,
+    "climate_resilience": 0.10,
 }
 
 CORE_METRICS = [
@@ -24,6 +25,7 @@ CORE_METRICS = [
     "vacancy_rate_percent",
     "population_forecast_2040_percent",
     "unemployment_rate_percent",
+    "climate_resilience_score",
 ]
 
 
@@ -118,11 +120,23 @@ def score_region(metrics: dict[str, Decimal], population: Optional[int]) -> Regi
         red_flags.append("tiny_market")
         negatives.append("Sehr kleiner Markt: Exit-Liquiditaet in 20 Jahren fraglich.")
 
+    climate_score = derive_climate_resilience_score(metrics)
+    heat_score = get("climate_heat_resilience_score")
+    if heat_score is not None and heat_score < Decimal("45"):
+        red_flags.append("climate_heat_stress_risk")
+        negatives.append("Klimarisiko: Hitze/Versiegelung kann Wohnqualitaet und Nachfrage in 5-15 Jahren druecken.")
+    if climate_score < 45:
+        red_flags.append("climate_resilience_weak")
+        negatives.append("Klimaresilienz schwach: Hitze, Wasserstress oder Starkregen vor Suchagent-Entscheidung pruefen.")
+    elif climate_score >= 70:
+        positives.append("Klimaresilienz wirkt solide: Region bleibt im 5-15-Jahres-Blick voraussichtlich gut bewohnbar.")
+
     category_scores = {
         "yield_power": int(yield_score),
         "demand_stability": int(demand_score),
         "economic_base": int(economic_score),
         "exit_liquidity": int(liquidity_score),
+        "climate_resilience": int(climate_score),
     }
     total = clamp(sum(category_scores[key] * weight for key, weight in WEIGHTS.items()))
     # The strategy is cashflow: a market that cannot yield is out, no matter
@@ -155,8 +169,33 @@ def score_region(metrics: dict[str, Decimal], population: Optional[int]) -> Regi
         recommendation=recommendation,
         data_completeness_percent=completeness,
         explanation=(
-            "Gewichtung fuer 20-Jahre-Halten mit Portfolio-Exit: Ertragskraft 35%, "
-            "Nachfragestabilitaet 30% (Prognose 2040 = Exit-Horizont), Wirtschaftsbasis 20%, "
-            "Exit-Liquiditaet 15%. Eigene Marktdaten aus dem Listing-Zufluss ueberschreiben Schaetzwerte."
+            "Gewichtung fuer 20-Jahre-Halten mit Portfolio-Exit: Ertragskraft 32%, "
+            "Nachfragestabilitaet 27% (Prognose 2040 = Exit-Horizont), Wirtschaftsbasis 18%, "
+            "Exit-Liquiditaet 13%, Klima/Bewohnbarkeit 10%. Eigene Marktdaten aus dem Listing-Zufluss "
+            "ueberschreiben Schaetzwerte; Klimawerte sind Screening-Signale und muessen vor Ankauf mit "
+            "DWD/GERICS/kommunalen Hitze- und Starkregenkarten verifiziert werden."
         ),
     )
+
+
+def derive_climate_resilience_score(metrics: dict[str, Decimal]) -> int:
+    direct = metrics.get("climate_resilience_score")
+    if direct is not None:
+        return clamp(float(direct))
+
+    parts: list[tuple[Decimal, float]] = []
+    weighted_sources = {
+        "climate_heat_resilience_score": 0.50,
+        "climate_water_resilience_score": 0.25,
+        "climate_flood_resilience_score": 0.25,
+    }
+    for metric, weight in weighted_sources.items():
+        value = metrics.get(metric)
+        if value is not None:
+            parts.append((Decimal(str(value)), weight))
+
+    if not parts:
+        return 50
+
+    total_weight = sum(weight for _, weight in parts)
+    return clamp(sum(float(value) * weight for value, weight in parts) / total_weight)

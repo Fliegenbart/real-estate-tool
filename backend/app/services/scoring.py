@@ -25,6 +25,7 @@ DEAL_LOCATION_SCORE_FIELDS = [
     "urban_environment_quality_score",
     "noise_risk_score",
     "flood_risk_score",
+    "climate_resilience_score",
 ]
 
 
@@ -48,6 +49,7 @@ class LocationMetricsInput(BaseModel):
     urban_environment_quality_score: Optional[int] = None
     noise_risk_score: int = 60
     flood_risk_score: int = 60
+    climate_resilience_score: int = 60
 
 
 class ScoreConfig(BaseModel):
@@ -160,16 +162,27 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
                 "vacancy_risk_score": 0.15,
             },
         ),
+        "climate_habitability": weighted_score(
+            values,
+            {
+                "climate_resilience_score": 0.50,
+                "flood_risk_score": 0.20,
+                "urban_environment_quality_score": 0.15,
+                "leisure_quality_score": 0.10,
+                "public_transport_score": 0.05,
+            },
+        ),
     }
     total_score = weighted_score(
         category_scores,
         {
-            "growth_and_demand": 0.30,
-            "jobs_and_income": 0.23,
-            "housing_tightness": 0.17,
-            "connectivity_and_micro_location": 0.15,
+            "growth_and_demand": 0.26,
+            "jobs_and_income": 0.20,
+            "housing_tightness": 0.15,
+            "connectivity_and_micro_location": 0.14,
             "urban_environment_quality": 0.10,
             "risk_resilience": 0.05,
+            "climate_habitability": 0.10,
         },
     )
 
@@ -223,6 +236,11 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
     if values["noise_risk_score"] < 55 or values["flood_risk_score"] < 55:
         caution_factors.append("Noise or flood risk weakens the resilience of the location thesis.")
 
+    if values["climate_resilience_score"] >= 75:
+        positive_factors.append("Climate habitability supports 5-15 year resilience.")
+    elif values["climate_resilience_score"] < 55:
+        caution_factors.append("Climate heat or water stress needs validation before underwriting long-term demand.")
+
     source_lower = source.lower()
     if "mock" in source_lower or "manual" in source_lower:
         data_quality_notes.append(
@@ -235,6 +253,9 @@ def score_region_outlook(location: LocationMetricsInput, source: str = "mock/man
     )
     data_quality_notes.append(
         "Short-term rental signals are optional upside only; validate local rules before treating Airbnb or tourism demand as investment evidence."
+    )
+    data_quality_notes.append(
+        "Climate habitability is a screening factor for the next 5-15 years; validate with DWD, GERICS, municipal heat maps, and flood/stormwater maps before bidding."
     )
 
     if total_score >= 75:
@@ -338,6 +359,7 @@ def metric_interpretation(name: str, value: int) -> str:
         "urban_environment_quality_score": "objective neighborhood quality",
         "noise_risk_score": "noise resilience",
         "flood_risk_score": "flood resilience",
+        "climate_resilience_score": "5-15 year climate habitability",
     }
     return f"{direction} signal for {labels.get(name, name.replace('_', ' '))}"
 
@@ -386,10 +408,11 @@ def target_group_profile_payload(values: dict[str, int]) -> list[dict[str, Any]]
                 values,
                 {
                     "daily_needs_score": 0.35,
-                    "leisure_quality_score": 0.20,
+                    "leisure_quality_score": 0.18,
                     "vacancy_risk_score": 0.20,
-                    "nuisance_resilience_score": 0.15,
-                    "flood_risk_score": 0.10,
+                    "nuisance_resilience_score": 0.12,
+                    "flood_risk_score": 0.05,
+                    "climate_resilience_score": 0.10,
                 },
             ),
             reasons_for_profile(
@@ -484,6 +507,8 @@ def nuisance_risks(values: dict[str, int]) -> list[str]:
         risks.append("Laerm, Hauptstrasse, Bahn, Nachtleben oder Industrie koennen die Wohnqualitaet druecken.")
     if values["flood_risk_score"] < 55:
         risks.append("Hochwasser-/Umweltrisiko vor Ankauf separat pruefen.")
+    if values["climate_resilience_score"] < 55:
+        risks.append("Hitze-/Klimarisiko kann Wohnqualitaet in den naechsten 5-15 Jahren druecken.")
     return risks
 
 

@@ -145,6 +145,7 @@ LOCATION_SCORE_FIELDS = [
     "nuisance_resilience_score",
     "noise_risk_score",
     "flood_risk_score",
+    "climate_resilience_score",
 ]
 MICRO_LOCATION_EVIDENCE_UPDATE_FIELDS = [
     "public_transport_score",
@@ -1224,11 +1225,11 @@ def seed_region_defaults(db: Session = Depends(get_db)) -> dict[str, Any]:
     source = get_or_create_source(db, SEED_SOURCE_NAME)
 
     created = 0
-    for name, state, population, price, rent, vacancy, unemployment, forecast in SEED_CITIES:
+    for name, state, population, price, rent, vacancy, unemployment, forecast, climate in SEED_CITIES:
         region = find_or_create_region(
             db, name=name, level="gemeinde", federal_state=state, population=population
         )
-        values = [price, rent, vacancy, unemployment, forecast]
+        values = [price, rent, vacancy, unemployment, forecast, climate]
         for metric_name, value in zip(SEED_METRIC_COLUMNS, values):
             existing = (
                 db.query(RegionMetric)

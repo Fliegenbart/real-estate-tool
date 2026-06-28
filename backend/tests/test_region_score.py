@@ -12,11 +12,13 @@ def test_strong_cashflow_city_scores_well():
             "vacancy_rate_percent": Decimal("5.5"),
             "population_forecast_2040_percent": Decimal("8"),
             "unemployment_rate_percent": Decimal("8.5"),
+            "climate_resilience_score": Decimal("70"),
         },
         population=620000,
     )
     assert result.total_score >= 50
     assert result.category_scores["demand_stability"] >= 65
+    assert result.category_scores["climate_resilience"] == 70
     assert result.data_completeness_percent == 100
     assert "structural_decline_risk" not in result.red_flags
     assert result.rent_factor is not None
@@ -72,5 +74,25 @@ def test_own_flow_data_overrides_seed_estimates():
 
 def test_missing_data_yields_neutral_scores_and_low_completeness():
     result = score_region({}, population=None)
-    assert result.total_score == 48  # neutral 50s minus liquidity 40 at 15%
+    assert result.total_score == 49  # neutral 50s minus liquidity 40 at 13%
     assert result.data_completeness_percent == 0
+
+
+def test_region_score_penalizes_heat_stress_risk():
+    result = score_region(
+        {
+            "price_eur_sqm": Decimal("2500"),
+            "rent_eur_sqm": Decimal("9.0"),
+            "vacancy_rate_percent": Decimal("3.0"),
+            "population_forecast_2040_percent": Decimal("5"),
+            "unemployment_rate_percent": Decimal("6.0"),
+            "climate_heat_resilience_score": Decimal("35"),
+            "climate_water_resilience_score": Decimal("45"),
+            "climate_flood_resilience_score": Decimal("50"),
+        },
+        population=250000,
+    )
+
+    assert result.category_scores["climate_resilience"] < 45
+    assert "climate_heat_stress_risk" in result.red_flags
+    assert any("Klimarisiko" in factor for factor in result.negative_factors)

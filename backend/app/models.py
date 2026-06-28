@@ -312,6 +312,7 @@ class LocationScore(Base):
     nuisance_resilience_score: Mapped[int] = mapped_column(Integer, default=60)
     noise_risk_score: Mapped[int] = mapped_column(Integer, default=60)
     flood_risk_score: Mapped[int] = mapped_column(Integer, default=60)
+    climate_resilience_score: Mapped[int] = mapped_column(Integer, default=60)
     source: Mapped[str] = mapped_column(String(80), default="mock/manual")
     evidence_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     evidence_data_completeness_percent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
